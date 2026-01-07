@@ -458,16 +458,15 @@ export class MarketSyncService {
       });
     }
 
-    // If outcomes don't have token_ids, try to fetch them from CLOB API
+    // If outcomes don't have token_ids, try to fetch them from API
     let outcomesWithTokens = pmMarket.outcomes || [];
-    // Try conditionId, questionId, or id as condition_id
-    const conditionIdToUse = pmMarket.conditionId || pmMarket.questionId || pmMarket.id;
-    if (conditionIdToUse && (!pmMarket.outcomes || pmMarket.outcomes.every(o => !o.tokenId))) {
-      // Try to fetch token_ids from CLOB API
-      console.log(`[Sync] Attempting to fetch token_ids for condition_id: ${conditionIdToUse}`);
-      const tokens = await this.restClient.fetchMarketTokens(conditionIdToUse);
+    // Try conditionId, questionId, or id
+    const idToUse = pmMarket.conditionId || pmMarket.questionId || pmMarket.id;
+    if (idToUse && (!pmMarket.outcomes || pmMarket.outcomes.length === 0 || pmMarket.outcomes.every(o => !o.tokenId))) {
+      // Try to fetch token_ids from API (CLOB first, then Gamma)
+      const tokens = await this.restClient.fetchMarketTokens(idToUse);
       if (tokens.length > 0) {
-        console.log(`[Sync] Successfully fetched ${tokens.length} token_ids for condition ${conditionIdToUse}`);
+        console.log(`[Sync] Successfully fetched ${tokens.length} token_ids for ID ${idToUse}`);
         // Merge tokens with existing outcomes or create new ones
         if (pmMarket.outcomes && pmMarket.outcomes.length > 0) {
           outcomesWithTokens = pmMarket.outcomes.map((outcome, index) => ({

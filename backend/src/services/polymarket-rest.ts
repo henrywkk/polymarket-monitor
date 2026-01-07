@@ -293,70 +293,76 @@ export class PolymarketRestClient {
    * 
    * Note: For Gamma API events, the "id" field is often the condition_id
    */
-  async fetchMarketTokens(conditionId: string): Promise<Array<{ token_id: string; outcome: string }>> {
+  async fetchMarketTokens(id: string): Promise<Array<{ token_id: string; outcome: string }>> {
     try {
-      console.log(`[CLOB API] Fetching tokens for condition_id: ${conditionId}`);
+      console.log(`[Sync] Fetching tokens for ID: ${id}`);
       
-      // Try multiple CLOB API endpoints
-      const endpoints = [
-        `${POLYMARKET_API_BASE}/markets/${conditionId}`,
-        `${POLYMARKET_API_BASE}/v2/markets/${conditionId}`,
-        `${POLYMARKET_GAMMA_API}/events/${conditionId}`,
-      ];
+    // Use clob.polymarket.com for CLOB-specific data as requested
+    const clobEndpoints = [
+      `${POLYMARKET_API_BASE}/markets/${id}`, // POLYMARKET_API_BASE is clob.polymarket.com
+      `${POLYMARKET_API_BASE}/v2/markets/${id}`,
+    ];
 
-      for (const endpoint of endpoints) {
-        try {
-          const clobResponse = await axios.get<{
-            tokens?: Array<{ token_id: string; outcome?: string }>;
-            outcomes?: Array<{ token_id: string; outcome?: string }>;
-            token_id?: string;
-            asset_id?: string;
-            [key: string]: any;
-          }>(endpoint, {
-            timeout: 10000,
-          });
+    // Use gamma-api.polymarket.com for market metadata and linking
+    const gammaEndpoints = [
+      `${POLYMARKET_GAMMA_API}/markets/${id}`,
+      `${POLYMARKET_GAMMA_API}/events/${id}`,
+    ];
 
-          console.log(`[CLOB API] Response from ${endpoint}:`, {
-            hasTokens: !!clobResponse.data.tokens,
-            tokensCount: clobResponse.data.tokens?.length || 0,
-            hasOutcomes: !!clobResponse.data.outcomes,
-            outcomesCount: clobResponse.data.outcomes?.length || 0,
-            keys: Object.keys(clobResponse.data).slice(0, 10),
-          });
+    const allEndpoints = [...clobEndpoints, ...gammaEndpoints];
 
-          if (clobResponse.data.tokens && clobResponse.data.tokens.length > 0) {
-            const tokens = clobResponse.data.tokens.map((t: { token_id: string; outcome?: string }) => ({
-              token_id: t.token_id,
-              outcome: t.outcome || '',
-            }));
-            console.log(`[CLOB API] Found ${tokens.length} tokens from tokens array`);
-            return tokens;
+    for (const endpoint of allEndpoints) {
+      try {
+        const isClob = endpoint.includes('clob.polymarket.com');
+        console.log(`[${isClob ? 'CLOB' : 'Gamma'} API] Fetching from: ${endpoint}`);
+        
+        const response = await axios.get<any>(endpoint, { timeout: 10000 });
+        const data = response.data;
+
+        console.log(`[${isClob ? 'CLOB' : 'Gamma'} API] Success from ${endpoint}. Keys:`, Object.keys(data).slice(0, 15));
+
+        // 1. Check for tokens array (common in CLOB and Gamma /markets)
+        const tokens = data.tokens || data.outcomes;
+        if (tokens && Array.isArray(tokens) && tokens.length > 0) {
+          const result = tokens.map((t: any) => ({
+            token_id: t.token_id || t.asset_id || t.id,
+            outcome: t.outcome || t.label || '',
+          })).filter(t => t.token_id);
+          
+          if (result.length > 0) {
+            console.log(`[Sync] Found ${result.length} tokens via ${endpoint}`);
+            return result;
           }
-          if (clobResponse.data.outcomes && clobResponse.data.outcomes.length > 0) {
-            const tokens = clobResponse.data.outcomes.map((o: { token_id: string; outcome?: string }) => ({
-              token_id: o.token_id,
-              outcome: o.outcome || '',
-            }));
-            console.log(`[CLOB API] Found ${tokens.length} tokens from outcomes array`);
-            return tokens;
-          }
-        } catch (error) {
-          if (axios.isAxiosError(error)) {
-            const status = error.response?.status;
-            // Only log non-404 errors
-            if (status !== 404) {
-              console.warn(`[CLOB API] Error fetching from ${endpoint}: ${status} ${error.response?.statusText || ''}`);
-            }
-          }
-          continue;
         }
-      }
 
-      console.warn(`[CLOB API] No tokens found for condition ${conditionId} from any endpoint`);
+        // 2. Check for nested markets (common in Gamma /events)
+        if (data.markets && Array.isArray(data.markets) && data.markets.length > 0) {
+          console.log(`[Sync] Found ${data.markets.length} nested markets in event. Checking first market for tokens...`);
+          const firstMarket = data.markets[0];
+          const marketTokens = firstMarket.tokens || firstMarket.outcomes;
+          if (marketTokens && Array.isArray(marketTokens)) {
+            return marketTokens.map((t: any) => ({
+              token_id: t.token_id || t.asset_id || t.id,
+              outcome: t.outcome || t.label || '',
+            })).filter(t => t.token_id);
+          }
+          
+          // If no tokens in market object, maybe it has a conditionId we can use
+          if (firstMarket.conditionId && firstMarket.conditionId !== id) {
+            console.log(`[Sync] Found conditionId ${firstMarket.conditionId} in event. Recursive call...`);
+            return this.fetchMarketTokens(firstMarket.conditionId);
+          }
+        }
+      } catch (error) {
+        // Silently continue to next endpoint
+        continue;
+      }
+    }
+
+      console.warn(`[Sync] No tokens found for ID ${id} from any endpoint`);
       return [];
     } catch (error) {
-      // CLOB API might not have this endpoint or require auth
-      console.warn(`[CLOB API] Could not fetch tokens for condition ${conditionId}:`, error instanceof Error ? error.message : String(error));
+      console.warn(`[Sync] Could not fetch tokens for ID ${id}:`, error instanceof Error ? error.message : String(error));
       return [];
     }
   }

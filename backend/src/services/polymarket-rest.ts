@@ -290,34 +290,73 @@ export class PolymarketRestClient {
    * Fetch market order book from CLOB API to get token_ids (asset_ids)
    * CLOB API: GET /book?token_id={token_id}
    * We can also get market info from: GET /markets/{condition_id}
+   * 
+   * Note: For Gamma API events, the "id" field is often the condition_id
    */
   async fetchMarketTokens(conditionId: string): Promise<Array<{ token_id: string; outcome: string }>> {
     try {
-      // Try CLOB API market endpoint first
-      const clobResponse = await axios.get<{
-        tokens?: Array<{ token_id: string; outcome?: string }>;
-        outcomes?: Array<{ token_id: string; outcome?: string }>;
-      }>(`${POLYMARKET_API_BASE}/markets/${conditionId}`, {
-        timeout: 10000,
-      });
+      console.log(`[CLOB API] Fetching tokens for condition_id: ${conditionId}`);
+      
+      // Try multiple CLOB API endpoints
+      const endpoints = [
+        `${POLYMARKET_API_BASE}/markets/${conditionId}`,
+        `${POLYMARKET_API_BASE}/v2/markets/${conditionId}`,
+        `${POLYMARKET_GAMMA_API}/events/${conditionId}`,
+      ];
 
-      if (clobResponse.data.tokens && clobResponse.data.tokens.length > 0) {
-        return clobResponse.data.tokens.map((t: { token_id: string; outcome?: string }) => ({
-          token_id: t.token_id,
-          outcome: t.outcome || '',
-        }));
-      }
-      if (clobResponse.data.outcomes && clobResponse.data.outcomes.length > 0) {
-        return clobResponse.data.outcomes.map((o: { token_id: string; outcome?: string }) => ({
-          token_id: o.token_id,
-          outcome: o.outcome || '',
-        }));
+      for (const endpoint of endpoints) {
+        try {
+          const clobResponse = await axios.get<{
+            tokens?: Array<{ token_id: string; outcome?: string }>;
+            outcomes?: Array<{ token_id: string; outcome?: string }>;
+            token_id?: string;
+            asset_id?: string;
+            [key: string]: any;
+          }>(endpoint, {
+            timeout: 10000,
+          });
+
+          console.log(`[CLOB API] Response from ${endpoint}:`, {
+            hasTokens: !!clobResponse.data.tokens,
+            tokensCount: clobResponse.data.tokens?.length || 0,
+            hasOutcomes: !!clobResponse.data.outcomes,
+            outcomesCount: clobResponse.data.outcomes?.length || 0,
+            keys: Object.keys(clobResponse.data).slice(0, 10),
+          });
+
+          if (clobResponse.data.tokens && clobResponse.data.tokens.length > 0) {
+            const tokens = clobResponse.data.tokens.map((t: { token_id: string; outcome?: string }) => ({
+              token_id: t.token_id,
+              outcome: t.outcome || '',
+            }));
+            console.log(`[CLOB API] Found ${tokens.length} tokens from tokens array`);
+            return tokens;
+          }
+          if (clobResponse.data.outcomes && clobResponse.data.outcomes.length > 0) {
+            const tokens = clobResponse.data.outcomes.map((o: { token_id: string; outcome?: string }) => ({
+              token_id: o.token_id,
+              outcome: o.outcome || '',
+            }));
+            console.log(`[CLOB API] Found ${tokens.length} tokens from outcomes array`);
+            return tokens;
+          }
+        } catch (error) {
+          if (axios.isAxiosError(error)) {
+            const status = error.response?.status;
+            // Only log non-404 errors
+            if (status !== 404) {
+              console.warn(`[CLOB API] Error fetching from ${endpoint}: ${status} ${error.response?.statusText || ''}`);
+            }
+          }
+          continue;
+        }
       }
 
+      console.warn(`[CLOB API] No tokens found for condition ${conditionId} from any endpoint`);
       return [];
     } catch (error) {
       // CLOB API might not have this endpoint or require auth
-      console.warn(`Could not fetch tokens for condition ${conditionId} from CLOB API:`, error instanceof Error ? error.message : String(error));
+      console.warn(`[CLOB API] Could not fetch tokens for condition ${conditionId}:`, error instanceof Error ? error.message : String(error));
       return [];
     }
   }

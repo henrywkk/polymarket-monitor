@@ -18,7 +18,7 @@ export class MarketSyncService {
    * Detect category from market data
    */
   private detectCategory(market: PolymarketMarket): string {
-    const question = (market.question || '').toLowerCase();
+    const question = String(market.question || '').toLowerCase();
     // Handle tags - they might be strings, numbers, or objects
     const tags = (market.tags || []).map((t: any) => {
       if (typeof t === 'string') return t.toLowerCase();
@@ -29,7 +29,18 @@ export class MarketSyncService {
       }
       return String(t || '').toLowerCase();
     });
-    const category = (market.category || '').toLowerCase();
+    // Handle category - might be string, number, object, or null
+    let category = '';
+    if (market.category) {
+      if (typeof market.category === 'string') {
+        category = market.category.toLowerCase();
+      } else if (typeof market.category === 'object' && market.category !== null) {
+        const catObj = market.category as any;
+        category = (catObj.label || catObj.slug || String(catObj.id || '')).toLowerCase();
+      } else {
+        category = String(market.category).toLowerCase();
+      }
+    }
     
     // Crypto keywords
     const cryptoKeywords = ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'cryptocurrency', 
@@ -113,7 +124,19 @@ export class MarketSyncService {
           console.log(`Found Crypto tag: id=${cryptoTag.id}, label=${cryptoTag.label}, slug=${cryptoTag.slug}`);
         } else {
           console.warn(`Crypto tag not found in fetched tags. Using default: ${TAG_IDS.CRYPTO}`);
-          // Log all tag labels to help debug
+          // Search through all tags for crypto-related tags
+          const cryptoRelatedTags = tags.filter(t => {
+            const label = (t.label || '').toLowerCase();
+            const slug = (t.slug || '').toLowerCase();
+            return label.includes('crypto') || slug.includes('crypto') || 
+                   label.includes('bitcoin') || slug.includes('bitcoin') ||
+                   label.includes('ethereum') || slug.includes('ethereum');
+          });
+          if (cryptoRelatedTags.length > 0) {
+            console.log(`Found ${cryptoRelatedTags.length} crypto-related tags:`, 
+              cryptoRelatedTags.map(t => ({ id: t.id, label: t.label, slug: t.slug })));
+          }
+          // Log first 20 tags to help debug
           const tagLabels = tags.map(t => ({ id: t.id, label: t.label, slug: t.slug })).slice(0, 20);
           console.log('Available tags (first 20):', JSON.stringify(tagLabels, null, 2));
         }

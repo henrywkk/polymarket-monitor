@@ -143,7 +143,10 @@ export class MarketIngestionService {
         timestamp: Date.now(),
       };
       await redis.setex(priceKey, 3600, JSON.stringify(lastPrice)); // Expire after 1 hour
-      await redis.setex(tokenPriceKey, 3600, JSON.stringify(lastPrice)); // Also by token_id
+      
+      // Also store by token_id for direct lookup
+      const tokenPriceKey = `token:${outcome.token_id}:price`;
+      await redis.setex(tokenPriceKey, 3600, JSON.stringify(lastPrice));
 
       // Also store in a market-level cache for quick lookup
       await redis.hset(`market:${marketId}:prices`, outcome.token_id, JSON.stringify(lastPrice));

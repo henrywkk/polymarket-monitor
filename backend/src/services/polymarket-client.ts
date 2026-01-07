@@ -85,11 +85,12 @@ export class PolymarketWebSocketClient {
             
             // Handle plain text messages (e.g., "INVALID OPERATION", "PONG")
             if (typeof messageStr === 'string' && !messageStr.trim().startsWith('{') && !messageStr.trim().startsWith('[')) {
+              const trimmed = messageStr.trim();
               // Plain text message - could be PONG, error, or status
-              if (messageStr.trim() === 'PONG' || messageStr.trim() === 'pong') {
-                // Heartbeat acknowledged
+              if (trimmed === 'PONG' || trimmed === 'pong') {
+                console.log(`[WebSocket] Received PONG (plain text)`);
                 return;
-              } else if (messageStr.trim() === 'INVALID OPERATION') {
+              } else if (trimmed === 'INVALID OPERATION') {
                 // Server is telling us we need to subscribe first (this is normal before subscription)
                 // Only log once to avoid spam
                 if (this.reconnectAttempts === 0 && !this.subscribedAssetIds.has('_logged_invalid_op')) {
@@ -99,7 +100,7 @@ export class PolymarketWebSocketClient {
                 return;
               } else {
                 // Other plain text messages
-                console.log(`[WebSocket] Received plain text message: ${messageStr}`);
+                console.log(`[WebSocket] Received unknown plain text message: ${trimmed}`);
                 return;
               }
             }
@@ -109,11 +110,11 @@ export class PolymarketWebSocketClient {
             
             // Handle PONG responses (Polymarket uses uppercase)
             if (message.type === 'PONG' || message.type === 'pong' || message === 'PONG' || message === 'pong') {
-              // Heartbeat acknowledged, connection is alive
+              console.log(`[WebSocket] Received PONG (JSON)`);
               return;
             }
             
-            // Log all messages for debugging (we need to see what we're actually receiving)
+            // Log ALL incoming JSON messages for now to see the data flow
             console.log(`[WebSocket Message] Received JSON:`, JSON.stringify(message).substring(0, 500));
             
             this.handleMessage(message);
@@ -329,10 +330,10 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    // CLOB WebSocket expects: { type: 'MARKET', assets_ids: [...] }
-    // Note: "assets_ids" (plural) not "asset_ids"
-    const subscription: PolymarketSubscription = {
-      type: 'MARKET',
+    // CLOB WebSocket expects: { type: 'market', assets_ids: [...] }
+    // Note: Use lowercase 'market' per documentation
+    const subscription: any = {
+      type: 'market',
       assets_ids: assetIds,
     };
 
@@ -340,9 +341,8 @@ export class PolymarketWebSocketClient {
       const subscriptionMessage = JSON.stringify(subscription);
       console.log(`[WebSocket Subscribe] Sending subscription request:`, {
         url: this.url,
-        message: subscriptionMessage,
+        message: subscriptionMessage.substring(0, 500),
         assetCount: assetIds.length,
-        firstFewAssets: assetIds.slice(0, 5),
       });
       
       this.ws.send(subscriptionMessage);
@@ -496,15 +496,15 @@ export class PolymarketWebSocketClient {
     this.pingInterval = setInterval(() => {
       if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
         try {
-          // Send PING message (Polymarket expects uppercase "PING")
-          const pingMessage = JSON.stringify({ type: 'PING' });
+          // Send ping message (lowercase per typical convention)
+          const pingMessage = JSON.stringify({ type: 'ping' });
           this.ws.send(pingMessage);
           // Log first few pings for debugging
           if (this.reconnectAttempts === 0 && this.pingInterval) {
             console.log(`[WebSocket Ping] Sent: ${pingMessage}`);
           }
         } catch (error) {
-          console.error('Error sending PING:', error);
+          console.error('Error sending ping:', error);
           // Connection might be dead, trigger reconnect
           this.isConnected = false;
           this.attemptReconnect();

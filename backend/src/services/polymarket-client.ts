@@ -35,7 +35,8 @@ export class PolymarketWebSocketClient {
 
   constructor(url?: string) {
     // Default to correct CLOB WebSocket URL if not provided
-    this.url = url || 'wss://ws-subscriptions-clob.polymarket.com/ws/';
+    // Per poly-websockets library: wss://ws-subscriptions-clob.polymarket.com/ws/market
+    this.url = url || 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
   }
 
   connect(): Promise<void> {
@@ -46,9 +47,11 @@ export class PolymarketWebSocketClient {
           console.log(`Connecting to Polymarket CLOB WebSocket: ${this.url}`);
         }
         
-        // Verify URL has /ws/ suffix
-        if (!this.url.endsWith('/ws/') && !this.url.endsWith('/ws')) {
-          console.warn(`WebSocket URL may be incorrect. Expected to end with /ws/ but got: ${this.url}`);
+        // Verify URL has correct path
+        // Per poly-websockets library, should be: wss://ws-subscriptions-clob.polymarket.com/ws/market
+        if (!this.url.includes('/ws/market')) {
+          console.warn(`WebSocket URL may be incorrect. Expected to include /ws/market but got: ${this.url}`);
+          console.warn(`Correct URL format: wss://ws-subscriptions-clob.polymarket.com/ws/market`);
         }
         
         // Add headers to help with WebSocket upgrade
@@ -371,7 +374,12 @@ export class PolymarketWebSocketClient {
       if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
         try {
           // Send PING message (Polymarket expects uppercase "PING")
-          this.ws.send(JSON.stringify({ type: 'PING' }));
+          const pingMessage = JSON.stringify({ type: 'PING' });
+          this.ws.send(pingMessage);
+          // Log first few pings for debugging
+          if (this.reconnectAttempts === 0 && this.pingInterval) {
+            console.log(`[WebSocket Ping] Sent: ${pingMessage}`);
+          }
         } catch (error) {
           console.error('Error sending PING:', error);
           // Connection might be dead, trigger reconnect

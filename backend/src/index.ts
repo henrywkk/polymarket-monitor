@@ -45,12 +45,14 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 // Initialize Polymarket WebSocket client
-// Use the correct CLOB WebSocket URL: wss://ws-subscriptions-clob.polymarket.com/ws/
+// Use the correct CLOB WebSocket URL: wss://ws-subscriptions-clob.polymarket.com/ws/market
+// Reference: https://github.com/nevuamarkets/poly-websockets/blob/main/src/WSSubscriptionManager.ts
 // Note: Do NOT use wss://clob.polymarket.com - that's the REST API, not WebSocket
-// IMPORTANT: If POLYMARKET_WS_URL is set in Railway, ensure it includes /ws/ suffix
+// IMPORTANT: If POLYMARKET_WS_URL is set in Railway, ensure it includes /ws/market path
 const wsUrl = process.env.POLYMARKET_WS_URL;
-if (wsUrl && !wsUrl.endsWith('/ws/') && !wsUrl.endsWith('/ws')) {
-  console.warn(`WARNING: POLYMARKET_WS_URL="${wsUrl}" may be incorrect. Should end with /ws/`);
+if (wsUrl && !wsUrl.includes('/ws/market')) {
+  console.warn(`WARNING: POLYMARKET_WS_URL="${wsUrl}" may be incorrect. Should include /ws/market`);
+  console.warn(`Correct format: wss://ws-subscriptions-clob.polymarket.com/ws/market`);
 }
 const wsClient = new PolymarketWebSocketClient(wsUrl); // If not set, uses correct default in constructor
 const marketIngestion = new MarketIngestionService(wsClient, wsServer);

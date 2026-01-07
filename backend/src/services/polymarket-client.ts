@@ -232,7 +232,7 @@ export class PolymarketWebSocketClient {
         ? `[${assetIdsArray.slice(0, 5).join(', ')}... (+${assetIdsArray.length - 5} more)]`
         : msg;
       
-      console.log(`[WebSocket Subscribe] Sending: ${msg.substring(0, 100)}...`);
+      console.log(`[WebSocket Subscribe] Sending: ${logIds}`);
       this.ws.send(msg);
     } catch (error) {
       console.error(`Error sending subscription:`, error);

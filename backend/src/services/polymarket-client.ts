@@ -218,21 +218,24 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    // The /ws/market endpoint expects a literal array of token ID strings
-    // This replaces any previous subscription list on this connection
+    // Trying the most comprehensive subscription format for the CLOB subscription manager
     const assetIdsArray = Array.from(this.subscribedAssetIds);
     
+    const subscription = {
+      type: 'market',
+      assets_ids: assetIdsArray
+    };
+
     try {
-      const msg = JSON.stringify(assetIdsArray);
-      // Log only the first few IDs to avoid log bloat
+      const msg = JSON.stringify(subscription);
       const logIds = assetIdsArray.length > 5 
         ? `[${assetIdsArray.slice(0, 5).join(', ')}... (+${assetIdsArray.length - 5} more)]`
         : msg;
       
-      console.log(`[WebSocket Subscribe] Sending full list of ${assetIdsArray.length} assets: ${logIds}`);
+      console.log(`[WebSocket Subscribe] Sending: ${msg.substring(0, 100)}...`);
       this.ws.send(msg);
     } catch (error) {
-      console.error(`Error sending subscription array:`, error);
+      console.error(`Error sending subscription:`, error);
     }
   }
 

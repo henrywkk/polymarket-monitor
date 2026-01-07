@@ -201,10 +201,10 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    // This format is used by the poly-websockets library for the /ws/market endpoint
-    // type: 'market' (lowercase) is the key here
+    // Standard CLOB subscription format
+    // Even on the /market endpoint, the type is usually 'subscribe'
     const subscription = {
-      type: 'market',
+      type: 'subscribe',
       assets_ids: assetIds,
     };
 
@@ -280,9 +280,10 @@ export class PolymarketWebSocketClient {
     this.pingInterval = setInterval(() => {
       if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
         try {
-          const msg = JSON.stringify({ type: 'ping' });
-          this.ws.send(msg);
-          if (this.reconnectAttempts === 0) console.log(`[WebSocket Ping] Sent: ${msg}`);
+          // Some Polymarket endpoints expect a simple string "ping" instead of JSON
+          // The poly-websockets library and standard CLOB often use this
+          this.ws.send('ping');
+          if (this.reconnectAttempts === 0) console.log(`[WebSocket Ping] Sent: ping`);
         } catch (error) {
           console.error('Error sending ping:', error);
           this.isConnected = false;

@@ -52,11 +52,23 @@ export class MarketSyncService {
    * Sync a single market from Polymarket format to our database
    */
   private async syncMarket(pmMarket: PolymarketMarket): Promise<void> {
+    // Determine market ID - use conditionId or tokenId as fallback
+    const marketId = pmMarket.id || pmMarket.conditionId || pmMarket.tokenId;
+    
+    if (!marketId) {
+      console.warn('Skipping market without ID:', {
+        question: pmMarket.question,
+        conditionId: pmMarket.conditionId,
+        tokenId: pmMarket.tokenId,
+      });
+      return;
+    }
+
     // Convert Polymarket market to our Market format
     const market: Omit<Market, 'createdAt' | 'updatedAt'> = {
-      id: pmMarket.id,
-      question: pmMarket.question,
-      slug: pmMarket.slug || pmMarket.id,
+      id: marketId,
+      question: pmMarket.question || 'Untitled Market',
+      slug: pmMarket.slug || marketId,
       category: pmMarket.category || 'Uncategorized',
       endDate: pmMarket.endDateISO
         ? new Date(pmMarket.endDateISO)
@@ -73,8 +85,8 @@ export class MarketSyncService {
     if (pmMarket.outcomes && pmMarket.outcomes.length > 0) {
       for (const pmOutcome of pmMarket.outcomes) {
         const outcome: Omit<Outcome, 'createdAt'> = {
-          id: pmOutcome.id || `${pmMarket.id}-${pmOutcome.outcome}`,
-          marketId: pmMarket.id,
+          id: pmOutcome.id || `${marketId}-${pmOutcome.outcome}`,
+          marketId: marketId,
           outcome: pmOutcome.outcome,
           tokenId: pmMarket.tokenId || pmMarket.conditionId || pmOutcome.id || '',
         };
@@ -84,15 +96,15 @@ export class MarketSyncService {
     } else if (pmMarket.conditionId || pmMarket.tokenId) {
       // Binary market - create Yes/No outcomes
       const yesOutcome: Omit<Outcome, 'createdAt'> = {
-        id: `${pmMarket.id}-yes`,
-        marketId: pmMarket.id,
+        id: `${marketId}-yes`,
+        marketId: marketId,
         outcome: 'Yes',
         tokenId: pmMarket.tokenId || pmMarket.conditionId || '',
       };
 
       const noOutcome: Omit<Outcome, 'createdAt'> = {
-        id: `${pmMarket.id}-no`,
-        marketId: pmMarket.id,
+        id: `${marketId}-no`,
+        marketId: marketId,
         outcome: 'No',
         tokenId: pmMarket.tokenId || pmMarket.conditionId || '',
       };

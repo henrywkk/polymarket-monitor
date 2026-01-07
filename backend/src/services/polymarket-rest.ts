@@ -3,15 +3,15 @@ import axios from 'axios';
 const POLYMARKET_API_BASE = 'https://clob.polymarket.com';
 
 export interface PolymarketMarket {
-  id: string;
-  question: string;
-  slug: string;
+  id?: string;
+  question?: string;
+  slug?: string;
   description?: string;
   image?: string;
   endDate?: string;
   endDateISO?: string;
   outcomes?: Array<{
-    id: string;
+    id?: string;
     outcome: string;
     price?: string;
   }>;
@@ -20,6 +20,8 @@ export interface PolymarketMarket {
   category?: string;
   liquidity?: string;
   volume?: string;
+  // Additional fields that might be in the API response
+  [key: string]: any;
 }
 
 export interface PolymarketMarketsResponse {
@@ -71,6 +73,10 @@ export class PolymarketRestClient {
           const markets = response.data?.data || response.data?.markets || [];
           if (markets.length > 0) {
             console.log(`Successfully fetched ${markets.length} markets from ${endpoint}`);
+            // Log first market structure for debugging
+            if (markets[0]) {
+              console.log('Sample market structure:', JSON.stringify(markets[0], null, 2));
+            }
             return markets;
           }
         } catch (error) {

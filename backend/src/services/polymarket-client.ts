@@ -43,7 +43,12 @@ export class PolymarketWebSocketClient {
       try {
         // Only log connection attempts occasionally to reduce log spam
         if (this.reconnectAttempts === 0 || this.reconnectAttempts % 5 === 0) {
-          console.log(`Connecting to Polymarket WebSocket: ${this.url}`);
+          console.log(`Connecting to Polymarket CLOB WebSocket: ${this.url}`);
+        }
+        
+        // Verify URL has /ws/ suffix
+        if (!this.url.endsWith('/ws/') && !this.url.endsWith('/ws')) {
+          console.warn(`WebSocket URL may be incorrect. Expected to end with /ws/ but got: ${this.url}`);
         }
         
         // Add headers to help with WebSocket upgrade
@@ -87,17 +92,24 @@ export class PolymarketWebSocketClient {
         });
 
         this.ws.on('error', (error) => {
-          // Only log errors occasionally to avoid log spam
-          if (this.reconnectAttempts === 0 || this.reconnectAttempts % 5 === 0) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            // Don't treat "Unexpected server response: 200" as a critical error
-            // This often means the endpoint doesn't support WebSocket or requires auth
-            if (errorMsg.includes('Unexpected server response: 200')) {
-              console.warn('WebSocket endpoint may not support WebSocket protocol. Continuing without real-time updates.');
-            } else {
-              console.error('WebSocket error:', errorMsg);
-            }
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          
+          // Always log 404 errors with full context
+          if (errorMsg.includes('Unexpected server response: 404')) {
+            console.error(`[WebSocket 404] Failed to connect to: ${this.url}`);
+            console.error('[WebSocket 404] Possible causes:');
+            console.error('  1. Incorrect URL - should be: wss://ws-subscriptions-clob.polymarket.com/ws/');
+            console.error('  2. Endpoint requires authentication');
+            console.error('  3. Endpoint may have changed or been deprecated');
+            console.error(`[WebSocket 404] Current URL: ${this.url}`);
+            console.error(`[WebSocket 404] Check POLYMARKET_WS_URL environment variable if set`);
+          } else if (errorMsg.includes('Unexpected server response: 200')) {
+            console.warn('WebSocket endpoint may not support WebSocket protocol. Continuing without real-time updates.');
+          } else if (this.reconnectAttempts === 0 || this.reconnectAttempts % 5 === 0) {
+            // Only log other errors occasionally to avoid spam
+            console.error('WebSocket error:', errorMsg);
           }
+          
           this.isConnected = false;
           // Don't reject on first attempt - allow graceful degradation
           if (this.reconnectAttempts === 0) {

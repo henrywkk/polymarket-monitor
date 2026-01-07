@@ -90,8 +90,12 @@ export class PolymarketWebSocketClient {
                 // Heartbeat acknowledged
                 return;
               } else if (messageStr.trim() === 'INVALID OPERATION') {
-                // Server is telling us we need to subscribe first
-                console.warn('[WebSocket] Server responded with "INVALID OPERATION" - may need to subscribe to assets first');
+                // Server is telling us we need to subscribe first (this is normal before subscription)
+                // Only log once to avoid spam
+                if (this.reconnectAttempts === 0 && !this.subscribedAssetIds.has('_logged_invalid_op')) {
+                  console.log('[WebSocket] Server responded with "INVALID OPERATION" - this is normal before subscribing to assets');
+                  this.subscribedAssetIds.add('_logged_invalid_op'); // Flag to prevent repeated logging
+                }
                 return;
               } else {
                 // Other plain text messages

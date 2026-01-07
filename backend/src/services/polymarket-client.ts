@@ -62,7 +62,7 @@ export class PolymarketWebSocketClient {
         });
 
         this.ws.on('open', () => {
-          console.log('Polymarket CLOB WebSocket connected');
+          console.log(`[WebSocket] Successfully connected to: ${this.url}`);
           this.isConnected = true;
           this.reconnectAttempts = 0;
           this.reconnectDelay = 1000;
@@ -72,6 +72,7 @@ export class PolymarketWebSocketClient {
           
           // Resubscribe to all previous asset_ids
           if (this.subscribedAssetIds.size > 0) {
+            console.log(`[WebSocket] Resubscribing to ${this.subscribedAssetIds.size} previously subscribed assets`);
             this.subscribeToAssets(Array.from(this.subscribedAssetIds));
           }
           
@@ -80,7 +81,8 @@ export class PolymarketWebSocketClient {
 
         this.ws.on('message', (data: WebSocket.Data) => {
           try {
-            const message = JSON.parse(data.toString());
+            const messageStr = data.toString();
+            const message = JSON.parse(messageStr);
             
             // Handle PONG responses (Polymarket uses uppercase)
             if (message.type === 'PONG' || message.type === 'pong' || message === 'PONG' || message === 'pong') {
@@ -88,9 +90,15 @@ export class PolymarketWebSocketClient {
               return;
             }
             
+            // Log first few messages for debugging
+            if (this.reconnectAttempts === 0) {
+              console.log(`[WebSocket Message] Received:`, JSON.stringify(message).substring(0, 200));
+            }
+            
             this.handleMessage(message);
           } catch (error) {
             console.error('Error parsing WebSocket message:', error);
+            console.error('Raw message:', data.toString().substring(0, 200));
           }
         });
 
@@ -222,12 +230,20 @@ export class PolymarketWebSocketClient {
     };
 
     try {
-      this.ws.send(JSON.stringify(subscription));
+      const subscriptionMessage = JSON.stringify(subscription);
+      console.log(`[WebSocket Subscribe] Sending subscription request:`, {
+        url: this.url,
+        message: subscriptionMessage,
+        assetCount: assetIds.length,
+        firstFewAssets: assetIds.slice(0, 5),
+      });
+      
+      this.ws.send(subscriptionMessage);
       assetIds.forEach(id => {
         this.subscribedAssetIds.add(id);
         this.subscriptions.add(id);
       });
-      console.log(`Subscribed to ${assetIds.length} asset(s): ${assetIds.slice(0, 3).join(', ')}${assetIds.length > 3 ? '...' : ''}`);
+      console.log(`Successfully subscribed to ${assetIds.length} asset(s): ${assetIds.slice(0, 3).join(', ')}${assetIds.length > 3 ? '...' : ''}`);
     } catch (error) {
       console.error(`Error subscribing to assets:`, error);
     }

@@ -193,21 +193,31 @@ export class MarketSyncService {
       }
       
       // Fetch markets from different categories using tag_slug (more reliable than tag_id)
+      // For Crypto, also fetch from sub-tags to get all crypto-related markets
+      const cryptoSubTags = ['bitcoin', 'ethereum', 'solana', 'xrp', 'dogecoin', 'microstrategy'];
+      
       const categoryConfigs = [
-        { tagSlug: 'crypto', tagId: cryptoTagId, category: 'Crypto' },
-        { tagSlug: 'politics', tagId: politicsTagId, category: 'Politics' },
-        { tagSlug: 'sports', tagId: sportsTagId, category: 'Sports' },
-        { tagSlug: undefined, tagId: undefined, category: 'All' }, // Fetch all markets
+        // Crypto: fetch from main tag + sub-tags
+        { tagSlug: 'crypto', tagId: cryptoTagId, category: 'Crypto', subTags: cryptoSubTags },
+        { tagSlug: 'politics', tagId: politicsTagId, category: 'Politics', subTags: [] },
+        { tagSlug: 'sports', tagId: sportsTagId, category: 'Sports', subTags: [] },
+        { tagSlug: undefined, tagId: undefined, category: 'All', subTags: [] }, // Fetch all markets
       ];
       
-      const marketsPerCategory = Math.ceil(limit / categoryConfigs.length);
+      // Calculate markets per category (accounting for sub-tags)
+      const baseCategories = categoryConfigs.filter(c => c.category !== 'All').length;
+      const cryptoSubTagCount = cryptoSubTags.length;
+      const totalFetchOperations = baseCategories + cryptoSubTagCount + 1; // +1 for "All"
+      const marketsPerOperation = Math.ceil(limit / totalFetchOperations);
+      
       let allMarkets: PolymarketMarket[] = [];
       const seenIds = new Set<string>();
 
-      for (const { tagSlug, tagId, category } of categoryConfigs) {
+      for (const { tagSlug, tagId, category, subTags } of categoryConfigs) {
+        // Fetch from main tag
         try {
           const categoryMarkets = await this.restClient.fetchMarkets({ 
-            limit: marketsPerCategory,
+            limit: marketsPerOperation,
             tagSlug, // Prefer tag_slug (more reliable)
             tagId: tagSlug ? undefined : tagId, // Only use tagId if tagSlug is not available
             active: true,
@@ -219,42 +229,60 @@ export class MarketSyncService {
             const marketId = market.conditionId || market.questionId || market.id;
             if (marketId && !seenIds.has(marketId)) {
               seenIds.add(marketId);
-              // Set category based on tag_slug/tag_id used
-              if (tagSlug || tagId) {
-                market.category = category;
-              } else {
-                // Fallback to intelligent detection for markets without tag filter
-                market.category = this.detectCategory(market);
-              }
+              market.category = category;
               allMarkets.push(market);
             }
           }
           
           if (tagSlug) {
             console.log(`Fetched ${categoryMarkets.length} markets with tag_slug=${tagSlug} (${category})`);
-            // Log sample markets to verify they match the expected category
-            if (categoryMarkets.length > 0) {
-              const sample = categoryMarkets.slice(0, 3).map(m => ({
-                id: m.id || m.conditionId || m.questionId,
-                question: m.question?.substring(0, 60),
-                category: m.category,
-                tags: m.tags,
-              }));
-              console.log(`Sample markets from tag_slug=${tagSlug}:`, JSON.stringify(sample, null, 2));
-            }
           } else if (tagId) {
             console.log(`Fetched ${categoryMarkets.length} markets with tag_id=${tagId} (${category})`);
           } else {
             console.log(`Fetched ${categoryMarkets.length} markets (all categories)`);
           }
         } catch (error) {
-          console.warn(`Error fetching markets for tag_id ${tagId}:`, error);
-          // Continue with other categories
+          console.warn(`Error fetching markets for ${category} (tag_slug=${tagSlug || tagId || 'none'}):`, error);
         }
+        
+        // For Crypto, also fetch from sub-tags
+        if (category === 'Crypto' && subTags.length > 0) {
+          for (const subTag of subTags) {
+            try {
+              const subTagMarkets = await this.restClient.fetchMarkets({
+                limit: marketsPerOperation,
+                tagSlug: subTag,
+                active: true,
+                closed: false,
+              });
+              
+              // Deduplicate and categorize as Crypto
+              for (const market of subTagMarkets) {
+                const marketId = market.conditionId || market.questionId || market.id;
+                if (marketId && !seenIds.has(marketId)) {
+                  seenIds.add(marketId);
+                  market.category = 'Crypto'; // All sub-tags are crypto-related
+                  allMarkets.push(market);
+                }
+              }
+              
+              console.log(`Fetched ${subTagMarkets.length} markets with tag_slug=${subTag} (Crypto sub-tag)`);
+            } catch (error) {
+              console.warn(`Error fetching markets for crypto sub-tag ${subTag}:`, error);
+            }
+          }
+        }
+      }
+      
+      // Log summary of Crypto markets fetched
+      const cryptoMarketsCount = allMarkets.filter(m => m.category === 'Crypto').length;
+      if (cryptoMarketsCount > 0) {
+        console.log(`Total Crypto markets fetched: ${cryptoMarketsCount} (from main tag + ${cryptoSubTags.length} sub-tags)`);
       }
 
       // If we still don't have enough markets, fetch more without tag filter
-      if (allMarkets.length < limit) {
+      // But only if we haven't exceeded the limit significantly
+      if (allMarkets.length < limit && allMarkets.length < limit * 1.2) {
         const additionalMarkets = await this.restClient.fetchMarkets({ 
           limit: limit - allMarkets.length,
           active: true,

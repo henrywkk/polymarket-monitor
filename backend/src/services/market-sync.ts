@@ -92,34 +92,50 @@ export class MarketSyncService {
       
       if (tags.length > 0) {
         console.log(`Fetched ${tags.length} tags from Polymarket API`);
-        const cryptoTag = tags.find(t => 
-          t.label?.toLowerCase() === 'crypto' || 
-          t.slug?.toLowerCase() === 'crypto' ||
-          t.id === TAG_IDS.CRYPTO
-        );
+        
+        // Log first few tags to see their structure
+        const sampleTags = tags.slice(0, 5);
+        console.log('Sample tags:', JSON.stringify(sampleTags, null, 2));
+        
+        // Try to find crypto tag - handle both string and number IDs
+        const cryptoTag = tags.find(t => {
+          const tagId = String(t.id || '');
+          const label = (t.label || '').toLowerCase();
+          const slug = (t.slug || '').toLowerCase();
+          return label === 'crypto' || 
+                 slug === 'crypto' ||
+                 tagId === TAG_IDS.CRYPTO ||
+                 tagId === String(100181);
+        });
+        
         if (cryptoTag) {
-          cryptoTagId = cryptoTag.id;
+          cryptoTagId = String(cryptoTag.id);
           console.log(`Found Crypto tag: id=${cryptoTag.id}, label=${cryptoTag.label}, slug=${cryptoTag.slug}`);
         } else {
           console.warn(`Crypto tag not found in fetched tags. Using default: ${TAG_IDS.CRYPTO}`);
+          // Log all tag labels to help debug
+          const tagLabels = tags.map(t => ({ id: t.id, label: t.label, slug: t.slug })).slice(0, 20);
+          console.log('Available tags (first 20):', JSON.stringify(tagLabels, null, 2));
         }
         
         // Also find other tags
-        const politicsTag = tags.find(t => 
-          t.label?.toLowerCase() === 'politics' || 
-          t.slug?.toLowerCase() === 'politics'
-        );
+        const politicsTag = tags.find(t => {
+          const label = (t.label || '').toLowerCase();
+          const slug = (t.slug || '').toLowerCase();
+          return label === 'politics' || slug === 'politics' || String(t.id) === TAG_IDS.POLITICS;
+        });
         if (politicsTag) {
-          politicsTagId = politicsTag.id;
+          politicsTagId = String(politicsTag.id);
           console.log(`Found Politics tag: id=${politicsTag.id}, label=${politicsTag.label}`);
         }
         
-        const sportsTag = tags.find(t => 
-          t.label?.toLowerCase() === 'sports' || 
-          t.slug?.toLowerCase() === 'sports'
-        );
+        const sportsTag = tags.find(t => {
+          const label = (t.label || '').toLowerCase();
+          const slug = (t.slug || '').toLowerCase();
+          return label === 'sports' || slug === 'sports' || String(t.id) === TAG_IDS.SPORTS;
+        });
         if (sportsTag) {
-          sportsTagId = sportsTag.id;
+          sportsTagId = String(sportsTag.id);
           console.log(`Found Sports tag: id=${sportsTag.id}, label=${sportsTag.label}`);
         }
       } else {

@@ -46,8 +46,9 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 // Initialize Polymarket WebSocket client
 // Use the correct CLOB WebSocket URL: wss://ws-subscriptions-clob.polymarket.com/ws/
+// Note: Do NOT use wss://clob.polymarket.com - that's the REST API, not WebSocket
 const wsClient = new PolymarketWebSocketClient(
-  process.env.POLYMARKET_WS_URL || 'wss://ws-subscriptions-clob.polymarket.com/ws/'
+  process.env.POLYMARKET_WS_URL // If not set, uses correct default in constructor
 );
 const marketIngestion = new MarketIngestionService(wsClient, wsServer);
 

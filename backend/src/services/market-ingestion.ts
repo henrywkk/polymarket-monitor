@@ -227,9 +227,15 @@ export class MarketIngestionService {
       if (result.rows.length > 0) {
         const assetIds = result.rows.map(row => row.token_id);
         this.wsClient.subscribeToAssets(assetIds);
-        console.log(`Subscribed to market ${marketId} with ${assetIds.length} asset(s)`);
+        // Only log if we have assets to avoid spam
+        if (assetIds.length > 0) {
+          console.log(`Subscribed to market ${marketId} with ${assetIds.length} asset(s)`);
+        }
       } else {
-        console.warn(`No token_ids found for market ${marketId}`);
+        // Only log warning occasionally to avoid spam (10% of the time)
+        if (Math.random() < 0.1) {
+          console.warn(`No token_ids found for market ${marketId} - market may not have outcomes yet`);
+        }
       }
     } catch (error) {
       console.error(`Error subscribing to market ${marketId}:`, error);

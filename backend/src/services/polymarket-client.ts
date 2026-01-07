@@ -12,9 +12,10 @@ export interface PolymarketPriceEvent {
 }
 
 export interface PolymarketSubscription {
-  type: 'subscribe' | 'unsubscribe';
+  type: 'MARKET' | 'USER' | 'subscribe' | 'unsubscribe'; // MARKET for CLOB WebSocket
+  assets_ids?: string[]; // Note: "assets_ids" not "asset_ids" per Polymarket docs
+  asset_ids?: string[]; // Legacy support
   channel?: string;
-  asset_ids?: string[]; // Token IDs (asset IDs) for CLOB WebSocket
   market?: string; // Legacy support
 }
 
@@ -30,10 +31,11 @@ export class PolymarketWebSocketClient {
   private subscribedAssetIds = new Set<string>(); // Track asset IDs for batch subscription
   private messageHandlers: Map<string, (data: PolymarketPriceEvent) => void> = new Map();
   private pingInterval: NodeJS.Timeout | null = null;
-  private heartbeatInterval = 8000; // 8 seconds (between 5-10 seconds)
+  private heartbeatInterval = 5000; // 5 seconds (required by Polymarket)
 
-  constructor(url: string = 'wss://ws-subscriptions-clob.polymarket.com/ws/') {
-    this.url = url;
+  constructor(url?: string) {
+    // Default to correct CLOB WebSocket URL if not provided
+    this.url = url || 'wss://ws-subscriptions-clob.polymarket.com/ws/';
   }
 
   connect(): Promise<void> {
@@ -72,8 +74,8 @@ export class PolymarketWebSocketClient {
           try {
             const message = JSON.parse(data.toString());
             
-            // Handle pong responses
-            if (message.type === 'pong' || message === 'pong') {
+            // Handle PONG responses (Polymarket uses uppercase)
+            if (message.type === 'PONG' || message.type === 'pong' || message === 'PONG' || message === 'pong') {
               // Heartbeat acknowledged, connection is alive
               return;
             }
@@ -124,28 +126,33 @@ export class PolymarketWebSocketClient {
     if (typeof message === 'object' && message !== null) {
       const msg = message as Record<string, unknown>;
       
-      // CLOB WebSocket sends updates in format:
-      // { type: 'update', asset_id: '...', price: {...}, ... }
-      // or { type: 'price_update', asset_id: '...', ... }
-      // or { type: 'price', asset_id: '...', bid: ..., ask: ..., ... }
+      // CLOB WebSocket sends updates per migration guide:
+      // After migration, uses: { type: 'update', asset_id: '...', best_bid: ..., best_ask: ..., ... }
+      // See: https://docs.polymarket.com/developers/CLOB/websocket/market-channel-migration-guide
       if (msg.type === 'update' || msg.type === 'price_update' || msg.type === 'price' || msg.type === 'price_changed' || msg.type === 'order_book_changed') {
-        // Extract asset_id (token_id) and price data
+        // Extract asset_id (token_id) - this is the key field
         const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
         
+        // Per migration guide, use best_bid and best_ask (not bid/ask)
         // Price can be in different formats:
-        // 1. { price: { bid: ..., ask: ... } }
-        // 2. { bid: ..., ask: ... } (directly on message)
-        // 3. { best_bid: ..., best_ask: ... }
+        // 1. { best_bid: ..., best_ask: ... } (new format per migration guide)
+        // 2. { price: { best_bid: ..., best_ask: ... } }
+        // 3. { bid: ..., ask: ... } (legacy format)
         let bid = 0;
         let ask = 0;
         
-        if (msg.price && typeof msg.price === 'object') {
+        // Prioritize best_bid/best_ask (new format)
+        if (msg.best_bid !== undefined || msg.best_ask !== undefined) {
+          bid = (msg.best_bid as number) || 0;
+          ask = (msg.best_ask as number) || 0;
+        } else if (msg.price && typeof msg.price === 'object') {
           const priceObj = msg.price as Record<string, unknown>;
-          bid = (priceObj.bid as number) || (priceObj.best_bid as number) || 0;
-          ask = (priceObj.ask as number) || (priceObj.best_ask as number) || 0;
+          bid = (priceObj.best_bid as number) || (priceObj.bid as number) || 0;
+          ask = (priceObj.best_ask as number) || (priceObj.ask as number) || 0;
         } else {
-          bid = (msg.bid as number) || (msg.best_bid as number) || 0;
-          ask = (msg.ask as number) || (msg.best_ask as number) || 0;
+          // Fallback to legacy format
+          bid = (msg.bid as number) || 0;
+          ask = (msg.ask as number) || 0;
         }
         
         if (!assetId || (bid === 0 && ask === 0)) {
@@ -183,7 +190,7 @@ export class PolymarketWebSocketClient {
 
   /**
    * Subscribe to market updates using asset_ids (token IDs)
-   * This is the correct format for CLOB WebSocket
+   * Polymarket CLOB WebSocket format: { "type": "MARKET", "assets_ids": [...] }
    */
   subscribeToAssets(assetIds: string[]): void {
     if (!this.isConnected || !this.ws) {
@@ -192,10 +199,11 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    // CLOB WebSocket expects: { type: 'subscribe', asset_ids: [...] }
+    // CLOB WebSocket expects: { type: 'MARKET', assets_ids: [...] }
+    // Note: "assets_ids" (plural) not "asset_ids"
     const subscription: PolymarketSubscription = {
-      type: 'subscribe',
-      asset_ids: assetIds,
+      type: 'MARKET',
+      assets_ids: assetIds,
     };
 
     try {
@@ -340,6 +348,7 @@ export class PolymarketWebSocketClient {
 
   /**
    * Start ping/pong heartbeat to maintain connection
+   * Polymarket requires PING every 5 seconds
    */
   private startHeartbeat(): void {
     if (this.pingInterval) {
@@ -349,10 +358,10 @@ export class PolymarketWebSocketClient {
     this.pingInterval = setInterval(() => {
       if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
         try {
-          // Send ping message
-          this.ws.send(JSON.stringify({ type: 'ping' }));
+          // Send PING message (Polymarket expects uppercase "PING")
+          this.ws.send(JSON.stringify({ type: 'PING' }));
         } catch (error) {
-          console.error('Error sending ping:', error);
+          console.error('Error sending PING:', error);
           // Connection might be dead, trigger reconnect
           this.isConnected = false;
           this.attemptReconnect();

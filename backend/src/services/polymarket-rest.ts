@@ -285,6 +285,42 @@ export class PolymarketRestClient {
       return null;
     }
   }
+
+  /**
+   * Fetch market order book from CLOB API to get token_ids (asset_ids)
+   * CLOB API: GET /book?token_id={token_id}
+   * We can also get market info from: GET /markets/{condition_id}
+   */
+  async fetchMarketTokens(conditionId: string): Promise<Array<{ token_id: string; outcome: string }>> {
+    try {
+      // Try CLOB API market endpoint first
+      const clobResponse = await axios.get<{
+        tokens?: Array<{ token_id: string; outcome?: string }>;
+        outcomes?: Array<{ token_id: string; outcome?: string }>;
+      }>(`${POLYMARKET_API_BASE}/markets/${conditionId}`, {
+        timeout: 10000,
+      });
+
+      if (clobResponse.data.tokens && clobResponse.data.tokens.length > 0) {
+        return clobResponse.data.tokens.map((t: { token_id: string; outcome?: string }) => ({
+          token_id: t.token_id,
+          outcome: t.outcome || '',
+        }));
+      }
+      if (clobResponse.data.outcomes && clobResponse.data.outcomes.length > 0) {
+        return clobResponse.data.outcomes.map((o: { token_id: string; outcome?: string }) => ({
+          token_id: o.token_id,
+          outcome: o.outcome || '',
+        }));
+      }
+
+      return [];
+    } catch (error) {
+      // CLOB API might not have this endpoint or require auth
+      console.warn(`Could not fetch tokens for condition ${conditionId} from CLOB API:`, error instanceof Error ? error.message : String(error));
+      return [];
+    }
+  }
 }
 
 export const polymarketRest = new PolymarketRestClient();

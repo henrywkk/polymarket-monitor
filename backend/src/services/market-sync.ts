@@ -445,10 +445,45 @@ export class MarketSyncService {
     // Upsert market
     await this.ingestionService.upsertMarket(market);
 
+    // If outcomes don't have token_ids, try to fetch them from CLOB API
+    let outcomesWithTokens = pmMarket.outcomes || [];
+    if (pmMarket.conditionId && (!pmMarket.outcomes || pmMarket.outcomes.every(o => !o.tokenId))) {
+      // Try to fetch token_ids from CLOB API
+      const tokens = await this.restClient.fetchMarketTokens(pmMarket.conditionId);
+      if (tokens.length > 0) {
+        // Merge tokens with existing outcomes or create new ones
+        if (pmMarket.outcomes && pmMarket.outcomes.length > 0) {
+          outcomesWithTokens = pmMarket.outcomes.map((outcome, index) => ({
+            ...outcome,
+            tokenId: tokens[index]?.token_id || outcome.tokenId || '',
+          }));
+        } else {
+          // Create outcomes from tokens
+          outcomesWithTokens = tokens.map((token: { token_id: string; outcome: string }) => ({
+            id: token.token_id,
+            tokenId: token.token_id,
+            outcome: token.outcome || '',
+            price: undefined,
+          }));
+        }
+      }
+    }
+
     // Sync outcomes if available
     // After syncing outcomes, we'll subscribe to price updates
-    if (pmMarket.outcomes && pmMarket.outcomes.length > 0) {
-      for (const pmOutcome of pmMarket.outcomes) {
+    if (outcomesWithTokens && outcomesWithTokens.length > 0) {
+      for (const pmOutcome of outcomesWithTokens) {
+        // Log first few outcomes to debug token_id extraction
+        if (Math.random() < 0.05) {
+          console.log(`[Sync] Market ${marketId} outcome data:`, {
+            outcome: pmOutcome.outcome,
+            id: pmOutcome.id,
+            tokenId: pmOutcome.tokenId,
+            marketConditionId: pmMarket.conditionId,
+            marketQuestionId: pmMarket.questionId,
+          });
+        }
+        
         const outcome: Omit<Outcome, 'createdAt'> = {
           id: pmOutcome.id || pmOutcome.tokenId || `${marketId}-${pmOutcome.outcome}`,
           marketId: marketId,
@@ -460,6 +495,8 @@ export class MarketSyncService {
       }
     } else if (pmMarket.conditionId || pmMarket.questionId || pmMarket.tokenId) {
       // Binary market - create Yes/No outcomes
+      // For binary markets, we need to fetch token_ids from CLOB API
+      // For now, use conditionId as placeholder (will need to fetch actual token_ids)
       const yesOutcome: Omit<Outcome, 'createdAt'> = {
         id: `${marketId}-yes`,
         marketId: marketId,
@@ -476,6 +513,11 @@ export class MarketSyncService {
 
       await this.ingestionService.upsertOutcome(yesOutcome);
       await this.ingestionService.upsertOutcome(noOutcome);
+    } else {
+      // No outcomes and no conditionId - log warning
+      if (Math.random() < 0.1) {
+        console.warn(`[Sync] Market ${marketId} has no outcomes or conditionId - cannot create outcomes`);
+      }
     }
 
     // Subscribe to WebSocket updates for this market (non-blocking)

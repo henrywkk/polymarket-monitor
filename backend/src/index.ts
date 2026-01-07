@@ -6,10 +6,13 @@ import { pool } from './config/database';
 import { logger } from './middleware/logger';
 import healthRoutes, { setWebSocketClient } from './routes/health';
 import marketsRoutes from './routes/markets';
+import syncRoutes, { setSyncService } from './routes/sync';
 import { PolymarketWebSocketClient } from './services/polymarket-client';
 import { MarketIngestionService } from './services/market-ingestion';
 import { WebSocketServer } from './services/websocket-server';
 import { initializeDatabase } from './db/init-db';
+import { PolymarketRestClient } from './services/polymarket-rest';
+import { MarketSyncService } from './services/market-sync';
 
 dotenv.config();
 
@@ -29,6 +32,7 @@ app.use(logger);
 // Routes
 app.use('/api/health', healthRoutes);
 app.use('/api/markets', marketsRoutes);
+app.use('/api/sync', syncRoutes);
 
 // Error handling middleware
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -45,8 +49,15 @@ const wsClient = new PolymarketWebSocketClient(
 );
 const marketIngestion = new MarketIngestionService(wsClient, wsServer);
 
+// Initialize Polymarket REST client and sync service
+const restClient = new PolymarketRestClient();
+const marketSync = new MarketSyncService(restClient, marketIngestion);
+
 // Set WebSocket client reference for health check
 setWebSocketClient(wsClient);
+
+// Set sync service reference for sync endpoint
+setSyncService(marketSync);
 
 // Start server
 const startServer = async () => {
@@ -57,6 +68,11 @@ const startServer = async () => {
     
     // Initialize database tables
     await initializeDatabase();
+
+    // Sync markets from Polymarket API (non-blocking)
+    marketSync.syncMarkets(100).catch((error: unknown) => {
+      console.error('Error during initial market sync:', error);
+    });
 
     // Connect to Polymarket WebSocket
     try {

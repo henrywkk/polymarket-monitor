@@ -33,9 +33,9 @@ export class PolymarketWebSocketClient {
   private heartbeatInterval = 5000;
 
   constructor(url?: string) {
-    // Official CLOB WebSocket endpoint
-    // Reference: https://docs.polymarket.com/developers/CLOB/websocket/market-channel
-    this.url = url || 'wss://ws-subscriptions-clob.polymarket.com/ws/';
+    // Reverting to the URL that successfully connected in previous logs
+    // The /ws/market path appears to be the correct one for the direct market channel
+    this.url = url || 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
   }
 
   connect(): Promise<void> {
@@ -201,10 +201,10 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    // Official CLOB subscription format
+    // This format is used by the poly-websockets library for the /ws/market endpoint
+    // type: 'market' (lowercase) is the key here
     const subscription = {
-      type: 'subscribe',
-      channel: 'market',
+      type: 'market',
       assets_ids: assetIds,
     };
 

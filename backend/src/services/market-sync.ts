@@ -52,14 +52,17 @@ export class MarketSyncService {
    * Sync a single market from Polymarket format to our database
    */
   private async syncMarket(pmMarket: PolymarketMarket): Promise<void> {
-    // Determine market ID - use conditionId or tokenId as fallback
-    const marketId = pmMarket.id || pmMarket.conditionId || pmMarket.tokenId;
+    // Polymarket uses conditionId as the primary identifier
+    // Use conditionId first, then id, then tokenId as fallback
+    const marketId = pmMarket.conditionId || pmMarket.id || pmMarket.tokenId;
     
     if (!marketId) {
       console.warn('Skipping market without ID:', {
         question: pmMarket.question,
         conditionId: pmMarket.conditionId,
+        id: pmMarket.id,
         tokenId: pmMarket.tokenId,
+        fullMarket: JSON.stringify(pmMarket, null, 2),
       });
       return;
     }

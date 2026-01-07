@@ -108,15 +108,15 @@ export class MarketSyncService {
         const sampleTags = tags.slice(0, 5);
         console.log('Sample tags:', JSON.stringify(sampleTags, null, 2));
         
-        // Try to find crypto tag - handle both string and number IDs
+        // Search for Crypto tag - look for exact match first, then partial matches
         const cryptoTag = tags.find(t => {
-          const tagId = String(t.id || '');
           const label = (t.label || '').toLowerCase();
           const slug = (t.slug || '').toLowerCase();
-          return label === 'crypto' || 
-                 slug === 'crypto' ||
-                 tagId === TAG_IDS.CRYPTO ||
-                 tagId === String(100181);
+          return label === 'crypto' || slug === 'crypto';
+        }) || tags.find(t => {
+          const label = (t.label || '').toLowerCase();
+          const slug = (t.slug || '').toLowerCase();
+          return label.includes('crypto') || slug.includes('crypto');
         });
         
         if (cryptoTag) {
@@ -136,30 +136,57 @@ export class MarketSyncService {
             console.log(`Found ${cryptoRelatedTags.length} crypto-related tags:`, 
               cryptoRelatedTags.map(t => ({ id: t.id, label: t.label, slug: t.slug })));
           }
-          // Log first 20 tags to help debug
-          const tagLabels = tags.map(t => ({ id: t.id, label: t.label, slug: t.slug })).slice(0, 20);
-          console.log('Available tags (first 20):', JSON.stringify(tagLabels, null, 2));
         }
         
-        // Also find other tags
+        // Search for Politics tag - look for exact match first, then partial matches
         const politicsTag = tags.find(t => {
           const label = (t.label || '').toLowerCase();
           const slug = (t.slug || '').toLowerCase();
-          return label === 'politics' || slug === 'politics' || String(t.id) === TAG_IDS.POLITICS;
+          return label === 'politics' || slug === 'politics';
+        }) || tags.find(t => {
+          const label = (t.label || '').toLowerCase();
+          const slug = (t.slug || '').toLowerCase();
+          return label.includes('politic') || slug.includes('politic') ||
+                 label.includes('election') || slug.includes('election');
         });
+        
         if (politicsTag) {
           politicsTagId = String(politicsTag.id);
-          console.log(`Found Politics tag: id=${politicsTag.id}, label=${politicsTag.label}`);
+          console.log(`Found Politics tag: id=${politicsTag.id}, label=${politicsTag.label}, slug=${politicsTag.slug}`);
+        } else {
+          console.warn(`Politics tag not found in fetched tags. Using default: ${TAG_IDS.POLITICS}`);
         }
         
+        // Search for Sports tag - look for exact match first, then partial matches
         const sportsTag = tags.find(t => {
           const label = (t.label || '').toLowerCase();
           const slug = (t.slug || '').toLowerCase();
-          return label === 'sports' || slug === 'sports' || String(t.id) === TAG_IDS.SPORTS;
+          return label === 'sports' || slug === 'sports';
+        }) || tags.find(t => {
+          const label = (t.label || '').toLowerCase();
+          const slug = (t.slug || '').toLowerCase();
+          return label.includes('sport') || slug.includes('sport');
         });
+        
         if (sportsTag) {
           sportsTagId = String(sportsTag.id);
-          console.log(`Found Sports tag: id=${sportsTag.id}, label=${sportsTag.label}`);
+          console.log(`Found Sports tag: id=${sportsTag.id}, label=${sportsTag.label}, slug=${sportsTag.slug}`);
+        } else {
+          console.warn(`Sports tag not found in fetched tags. Using default: ${TAG_IDS.SPORTS}`);
+        }
+        
+        // Log all category-related tags to help identify correct IDs
+        const categoryTags = tags.filter(t => {
+          const label = (t.label || '').toLowerCase();
+          const slug = (t.slug || '').toLowerCase();
+          return label.includes('crypto') || slug.includes('crypto') ||
+                 label.includes('politic') || slug.includes('politic') ||
+                 label.includes('sport') || slug.includes('sport') ||
+                 label.includes('election') || slug.includes('election');
+        });
+        if (categoryTags.length > 0) {
+          console.log(`Found ${categoryTags.length} category-related tags:`, 
+            categoryTags.map(t => ({ id: t.id, label: t.label, slug: t.slug })));
         }
       } else {
         console.warn('No tags fetched, using default tag IDs');
@@ -204,6 +231,16 @@ export class MarketSyncService {
           
           if (tagId) {
             console.log(`Fetched ${categoryMarkets.length} markets with tag_id=${tagId} (${category})`);
+            // Log sample markets to verify they match the expected category
+            if (categoryMarkets.length > 0) {
+              const sample = categoryMarkets.slice(0, 3).map(m => ({
+                id: m.id || m.conditionId || m.questionId,
+                question: m.question?.substring(0, 60),
+                category: m.category,
+                tags: m.tags,
+              }));
+              console.log(`Sample markets from tag_id=${tagId}:`, JSON.stringify(sample, null, 2));
+            }
           } else {
             console.log(`Fetched ${categoryMarkets.length} markets (all categories)`);
           }
@@ -283,12 +320,35 @@ export class MarketSyncService {
       return;
     }
 
+    // Ensure category is a string and not too long (VARCHAR(100) limit)
+    let categoryStr = 'Uncategorized';
+    if (pmMarket.category) {
+      if (typeof pmMarket.category === 'string') {
+        categoryStr = pmMarket.category.substring(0, 100); // Truncate if too long
+      } else if (typeof pmMarket.category === 'object' && pmMarket.category !== null) {
+        // Handle category as object
+        const catObj = pmMarket.category as any;
+        categoryStr = (catObj.label || catObj.slug || String(catObj.id || 'Uncategorized')).substring(0, 100);
+      } else {
+        categoryStr = String(pmMarket.category).substring(0, 100);
+      }
+    } else if (pmMarket.tags && pmMarket.tags.length > 0) {
+      // Use first tag as category if available
+      const firstTag = pmMarket.tags[0];
+      if (typeof firstTag === 'string') {
+        categoryStr = firstTag.substring(0, 100);
+      } else if (typeof firstTag === 'object' && firstTag !== null) {
+        const tagObj = firstTag as any;
+        categoryStr = (tagObj.label || tagObj.slug || String(tagObj.id || 'Uncategorized')).substring(0, 100);
+      }
+    }
+
     // Convert Polymarket market to our Market format
     const market: Omit<Market, 'createdAt' | 'updatedAt'> = {
       id: marketId,
       question: pmMarket.question || 'Untitled Market',
       slug: pmMarket.slug || marketId,
-      category: pmMarket.category || (pmMarket.tags && pmMarket.tags[0]) || 'Uncategorized',
+      category: categoryStr,
       endDate: pmMarket.endDateISO
         ? new Date(pmMarket.endDateISO)
         : pmMarket.endDate

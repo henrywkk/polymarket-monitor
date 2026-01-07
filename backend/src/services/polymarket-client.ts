@@ -233,11 +233,12 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    // Official Polymarket docs and poly-websockets library use lowercase 'market'
+    // According to Polymarket post-connection subscription documentation
+    // once connected, the 'operation' field should be used.
     const assetIdsArray = Array.from(this.subscribedAssetIds);
     
     const subscription = {
-      type: 'market',
+      operation: 'subscribe',
       assets_ids: assetIdsArray
     };
 
@@ -246,7 +247,7 @@ export class PolymarketWebSocketClient {
       
       // Clean up logging to show valid JSON-like format even for long lists
       const logIds = assetIdsArray.length > 5 
-        ? `{"type":"market","assets_ids":["${assetIdsArray.slice(0, 5).join('", "')}"... (+${assetIdsArray.length - 5} more)]}`
+        ? `{"operation":"subscribe","assets_ids":["${assetIdsArray.slice(0, 5).join('", "')}"... (+${assetIdsArray.length - 5} more)]}`
         : msg;
       
       console.log(`[WebSocket Subscribe] Sending update: ${logIds}`);

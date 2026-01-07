@@ -170,38 +170,54 @@ export class PolymarketRestClient {
       ];
 
       for (const { base, path, supportsTagId } of endpoints) {
+        const requestParams: Record<string, unknown> = {
+          limit: params?.limit || 100,
+          offset: params?.offset || 0,
+        };
+
+        // Only add tag_id if endpoint supports it
+        if (supportsTagId && params?.tagId) {
+          requestParams.tag_id = params.tagId;
+        }
+        
+        // Add active/closed filters for Gamma API
+        if (supportsTagId) {
+          if (params?.active !== undefined) {
+            requestParams.active = params.active;
+          } else {
+            requestParams.active = true; // Default to active markets
+          }
+          if (params?.closed !== undefined) {
+            requestParams.closed = params.closed;
+          } else {
+            requestParams.closed = false; // Default to non-closed markets
+          }
+        }
+
         try {
-          const requestParams: Record<string, unknown> = {
-            limit: params?.limit || 100,
-            offset: params?.offset || 0,
-          };
-
-          // Only add tag_id if endpoint supports it
-          if (supportsTagId && params?.tagId) {
-            requestParams.tag_id = params.tagId;
-          }
+          const fullUrl = `${base}${path}`;
+          console.log(`Attempting to fetch from ${fullUrl} with params:`, JSON.stringify(requestParams));
           
-          // Add active/closed filters for Gamma API
-          if (supportsTagId) {
-            if (params?.active !== undefined) {
-              requestParams.active = params.active;
-            } else {
-              requestParams.active = true; // Default to active markets
-            }
-            if (params?.closed !== undefined) {
-              requestParams.closed = params.closed;
-            } else {
-              requestParams.closed = false; // Default to non-closed markets
-            }
-          }
-
           const response = await axios.get<PolymarketMarketsResponse>(
-            `${base}${path}`,
+            fullUrl,
             {
               params: requestParams,
               timeout: 10000,
             }
           );
+
+          // Log response structure for debugging
+          if (base === POLYMARKET_GAMMA_API) {
+            console.log(`Gamma API response structure:`, {
+              hasData: !!response.data?.data,
+              hasMarkets: !!response.data?.markets,
+              hasEvents: !!response.data?.events,
+              dataLength: response.data?.data?.length,
+              marketsLength: response.data?.markets?.length,
+              eventsLength: response.data?.events?.length,
+              keys: Object.keys(response.data || {}),
+            });
+          }
 
           // Handle different response formats
           const rawMarkets = response.data?.data || response.data?.markets || response.data?.events || [];
@@ -211,11 +227,27 @@ export class PolymarketRestClient {
             // Normalize snake_case to camelCase
             const normalizedMarkets = rawMarkets.map(normalizeMarket);
             return normalizedMarkets;
+          } else {
+            console.log(`No markets found in response from ${fullUrl} (trying next endpoint...)`);
           }
         } catch (error) {
-          // Try next endpoint
-          if (axios.isAxiosError(error) && error.response?.status !== 404) {
-            console.warn(`Failed to fetch from ${base}${path}:`, error.response?.status || error.message);
+          // Log all errors for debugging
+          if (axios.isAxiosError(error)) {
+            const status = error.response?.status;
+            const statusText = error.response?.statusText;
+            const url = `${base}${path}`;
+            if (status === 404) {
+              // Silently skip 404s
+              continue;
+            } else {
+              const requestParamsStr = JSON.stringify(requestParams).substring(0, 200);
+              console.warn(`Failed to fetch from ${url}: ${status} ${statusText || ''}`, {
+                params: requestParamsStr,
+                responseData: error.response?.data ? JSON.stringify(error.response.data).substring(0, 200) : undefined,
+              });
+            }
+          } else {
+            console.warn(`Failed to fetch from ${base}${path}:`, error instanceof Error ? error.message : String(error));
           }
           continue;
         }

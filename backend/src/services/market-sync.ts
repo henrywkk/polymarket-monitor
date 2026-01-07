@@ -77,19 +77,51 @@ export class MarketSyncService {
       
       // First, try to fetch tags to verify tag IDs
       const tags = await this.restClient.fetchTags();
+      let cryptoTagId: string | undefined = TAG_IDS.CRYPTO;
+      let politicsTagId: string | undefined = TAG_IDS.POLITICS;
+      let sportsTagId: string | undefined = TAG_IDS.SPORTS;
+      
       if (tags.length > 0) {
         console.log(`Fetched ${tags.length} tags from Polymarket API`);
-        const cryptoTag = tags.find(t => t.label?.toLowerCase() === 'crypto' || t.slug?.toLowerCase() === 'crypto');
+        const cryptoTag = tags.find(t => 
+          t.label?.toLowerCase() === 'crypto' || 
+          t.slug?.toLowerCase() === 'crypto' ||
+          t.id === TAG_IDS.CRYPTO
+        );
         if (cryptoTag) {
-          console.log(`Found Crypto tag: id=${cryptoTag.id}, label=${cryptoTag.label}`);
+          cryptoTagId = cryptoTag.id;
+          console.log(`Found Crypto tag: id=${cryptoTag.id}, label=${cryptoTag.label}, slug=${cryptoTag.slug}`);
+        } else {
+          console.warn(`Crypto tag not found in fetched tags. Using default: ${TAG_IDS.CRYPTO}`);
         }
+        
+        // Also find other tags
+        const politicsTag = tags.find(t => 
+          t.label?.toLowerCase() === 'politics' || 
+          t.slug?.toLowerCase() === 'politics'
+        );
+        if (politicsTag) {
+          politicsTagId = politicsTag.id;
+          console.log(`Found Politics tag: id=${politicsTag.id}, label=${politicsTag.label}`);
+        }
+        
+        const sportsTag = tags.find(t => 
+          t.label?.toLowerCase() === 'sports' || 
+          t.slug?.toLowerCase() === 'sports'
+        );
+        if (sportsTag) {
+          sportsTagId = sportsTag.id;
+          console.log(`Found Sports tag: id=${sportsTag.id}, label=${sportsTag.label}`);
+        }
+      } else {
+        console.warn('No tags fetched, using default tag IDs');
       }
       
       // Fetch markets from different categories using tag_id
       const tagIds = [
-        { tagId: TAG_IDS.CRYPTO, category: 'Crypto' },
-        { tagId: TAG_IDS.POLITICS, category: 'Politics' },
-        { tagId: TAG_IDS.SPORTS, category: 'Sports' },
+        { tagId: cryptoTagId, category: 'Crypto' },
+        { tagId: politicsTagId, category: 'Politics' },
+        { tagId: sportsTagId, category: 'Sports' },
         { tagId: undefined, category: 'All' }, // Fetch all markets
       ];
       

@@ -12,12 +12,26 @@ export async function initializeDatabase(): Promise<void> {
     const sqlPath = path.join(__dirname, 'init.sql');
     let sql: string;
     
+    console.log('Looking for SQL file at:', sqlPath);
+    
     try {
       sql = fs.readFileSync(sqlPath, 'utf-8');
+      console.log('Found SQL file at:', sqlPath);
     } catch (error) {
       // Try alternative path for development
       const altPath = path.join(__dirname, '../../src/db/init.sql');
-      sql = fs.readFileSync(altPath, 'utf-8');
+      console.log('Trying alternative path:', altPath);
+      try {
+        sql = fs.readFileSync(altPath, 'utf-8');
+        console.log('Found SQL file at:', altPath);
+      } catch (altError) {
+        console.error('Could not find SQL file at either path:', {
+          production: sqlPath,
+          development: altPath,
+          error: altError instanceof Error ? altError.message : altError,
+        });
+        throw new Error('SQL initialization file not found');
+      }
     }
     
     // Split by semicolons and execute each statement
@@ -26,24 +40,51 @@ export async function initializeDatabase(): Promise<void> {
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && !s.startsWith('--'));
     
-    for (const statement of statements) {
+    console.log(`Executing ${statements.length} SQL statements...`);
+    
+    for (let i = 0; i < statements.length; i++) {
+      const statement = statements[i];
       if (statement) {
         try {
           await query(statement);
+          console.log(`Executed statement ${i + 1}/${statements.length}`);
         } catch (error) {
-          // Ignore errors for IF NOT EXISTS statements
-          if (error instanceof Error && !error.message.includes('already exists')) {
-            console.warn('Database init warning:', error.message);
+          // Log the error but continue
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (errorMsg.includes('already exists') || errorMsg.includes('duplicate')) {
+            console.log(`Statement ${i + 1} skipped (already exists):`, statement.substring(0, 50));
+          } else {
+            console.error(`Error executing statement ${i + 1}:`, errorMsg);
+            console.error('Statement:', statement.substring(0, 100));
           }
         }
       }
     }
     
-    console.log('Database initialized successfully');
+    // Verify tables were created
+    const tablesCheck = await query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name IN ('markets', 'outcomes', 'price_history')
+    `);
+    
+    console.log(`Database initialization complete. Found ${tablesCheck.rows.length} tables:`, 
+      tablesCheck.rows.map((r: { table_name: string }) => r.table_name));
+    
+    if (tablesCheck.rows.length === 0) {
+      console.warn('WARNING: No tables found after initialization!');
+    }
   } catch (error) {
-    console.error('Error initializing database:', error);
+    console.error('CRITICAL: Error initializing database:', error);
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+      });
+    }
     // Don't throw - allow server to start even if init fails
-    // Tables might already exist
+    // But log it clearly so we can debug
   }
 }
 

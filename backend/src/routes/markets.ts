@@ -80,10 +80,15 @@ router.get('/', async (req: Request, res: Response) => {
       await cacheService.cacheTopMarkets(response);
     }
 
-    return res.json(response);
+    return     return res.json(response);
   } catch (error) {
     console.error('Error fetching markets:', error);
-    return res.status(500).json({ error: 'Failed to fetch markets' });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error details:', errorMessage);
+    return res.status(500).json({ 
+      error: 'Failed to fetch markets',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+    });
   }
 });
 

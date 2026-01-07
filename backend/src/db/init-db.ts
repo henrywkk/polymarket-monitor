@@ -7,8 +7,18 @@ export async function initializeDatabase(): Promise<void> {
     console.log('Initializing database...');
     
     // Read the SQL initialization file
+    // In production (compiled), it's in dist/db/init.sql
+    // In development, it's in src/db/init.sql
     const sqlPath = path.join(__dirname, 'init.sql');
-    const sql = fs.readFileSync(sqlPath, 'utf-8');
+    let sql: string;
+    
+    try {
+      sql = fs.readFileSync(sqlPath, 'utf-8');
+    } catch (error) {
+      // Try alternative path for development
+      const altPath = path.join(__dirname, '../../src/db/init.sql');
+      sql = fs.readFileSync(altPath, 'utf-8');
+    }
     
     // Split by semicolons and execute each statement
     const statements = sql

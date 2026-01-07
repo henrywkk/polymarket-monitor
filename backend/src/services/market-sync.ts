@@ -261,9 +261,17 @@ export class MarketSyncService {
         return 0;
       }
 
-      // Count by category
+      // Count by category - ensure all categories are strings
       const categoryCounts = allMarkets.reduce((acc, m) => {
-        const cat = m.category || 'Uncategorized';
+        let cat: string;
+        if (typeof m.category === 'string') {
+          cat = m.category;
+        } else if (typeof m.category === 'object' && m.category !== null) {
+          const catObj = m.category as any;
+          cat = catObj.label || catObj.slug || String(catObj.id || 'Uncategorized');
+        } else {
+          cat = String(m.category || 'Uncategorized');
+        }
         acc[cat] = (acc[cat] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);

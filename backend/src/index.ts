@@ -9,6 +9,7 @@ import marketsRoutes from './routes/markets';
 import { PolymarketWebSocketClient } from './services/polymarket-client';
 import { MarketIngestionService } from './services/market-ingestion';
 import { WebSocketServer } from './services/websocket-server';
+import { initializeDatabase } from './db/init-db';
 
 dotenv.config();
 
@@ -53,6 +54,9 @@ const startServer = async () => {
     // Test database connection
     await pool.query('SELECT NOW()');
     console.log('Database connected successfully');
+    
+    // Initialize database tables
+    await initializeDatabase();
 
     // Connect to Polymarket WebSocket
     try {

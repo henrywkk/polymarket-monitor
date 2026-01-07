@@ -15,69 +15,94 @@ export class MarketSyncService {
   }
 
   /**
+   * Detect category from market data
+   */
+  private detectCategory(market: PolymarketMarket): string {
+    const question = (market.question || '').toLowerCase();
+    const tags = (market.tags || []).map(t => t.toLowerCase());
+    const category = (market.category || '').toLowerCase();
+    
+    // Crypto keywords
+    const cryptoKeywords = ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'cryptocurrency', 
+                           'token', 'coin', 'defi', 'nft', 'blockchain', 'solana', 'sol',
+                           'price of $', 'will $', 'token price', 'coin price'];
+    
+    // Politics keywords
+    const politicsKeywords = ['president', 'election', 'biden', 'trump', 'democrat', 'republican',
+                             'senate', 'congress', 'vote', 'candidate', 'nomination'];
+    
+    // Sports keywords
+    const sportsKeywords = ['nba', 'nfl', 'nhl', 'mlb', 'ufc', 'soccer', 'football', 'basketball',
+                           'hockey', 'baseball', 'game', 'match', 'championship', 'tournament'];
+    
+    // Check tags first
+    if (tags.some(t => t.includes('crypto') || t.includes('bitcoin') || t.includes('ethereum'))) {
+      return 'Crypto';
+    }
+    if (tags.some(t => t.includes('politics') || t.includes('election'))) {
+      return 'Politics';
+    }
+    if (tags.some(t => t.includes('sports') || t.includes('nba') || t.includes('nfl'))) {
+      return 'Sports';
+    }
+    
+    // Check category field
+    if (category.includes('crypto')) return 'Crypto';
+    if (category.includes('politic')) return 'Politics';
+    if (category.includes('sport')) return 'Sports';
+    if (category.includes('entertain')) return 'Entertainment';
+    
+    // Check question text
+    if (cryptoKeywords.some(kw => question.includes(kw))) {
+      return 'Crypto';
+    }
+    if (politicsKeywords.some(kw => question.includes(kw))) {
+      return 'Politics';
+    }
+    if (sportsKeywords.some(kw => question.includes(kw))) {
+      return 'Sports';
+    }
+    
+    // Use original category or default
+    return market.category || category || 'All';
+  }
+
+  /**
    * Sync markets from Polymarket API to database
-   * Fetches markets from multiple categories to ensure diversity
+   * Fetches all markets and categorizes them intelligently
    */
   async syncMarkets(limit: number = 100): Promise<number> {
     try {
       console.log(`Starting market sync, fetching up to ${limit} markets...`);
       
-      // Fetch markets from different categories to ensure diversity
-      const categories = ['Crypto', 'Politics', 'Sports', 'Entertainment', undefined]; // undefined = all markets
-      const marketsPerCategory = Math.ceil(limit / categories.length);
+      // Fetch all markets (Polymarket API may not support category filtering)
+      const markets = await this.restClient.fetchMarkets({ limit });
       
-      let allMarkets: PolymarketMarket[] = [];
-      const seenIds = new Set<string>();
-
-      for (const category of categories) {
-        try {
-          const categoryMarkets = await this.restClient.fetchMarkets({ 
-            limit: marketsPerCategory,
-            category 
-          });
-          
-          // Deduplicate markets
-          for (const market of categoryMarkets) {
-            const marketId = market.conditionId || market.questionId || market.id;
-            if (marketId && !seenIds.has(marketId)) {
-              seenIds.add(marketId);
-              allMarkets.push(market);
-            }
-          }
-          
-          if (category) {
-            console.log(`Fetched ${categoryMarkets.length} markets from category: ${category}`);
-          }
-        } catch (error) {
-          console.warn(`Error fetching markets for category ${category}:`, error);
-          // Continue with other categories
-        }
-      }
-
-      // If we still don't have enough markets, fetch more without category filter
-      if (allMarkets.length < limit) {
-        const additionalMarkets = await this.restClient.fetchMarkets({ 
-          limit: limit - allMarkets.length 
-        });
-        
-        for (const market of additionalMarkets) {
-          const marketId = market.conditionId || market.questionId || market.id;
-          if (marketId && !seenIds.has(marketId)) {
-            seenIds.add(marketId);
-            allMarkets.push(market);
-          }
-        }
-      }
-
-      if (allMarkets.length === 0) {
+      if (markets.length === 0) {
         console.log('No markets fetched from Polymarket API');
         return 0;
       }
 
-      console.log(`Fetched ${allMarkets.length} unique markets, processing...`);
+      console.log(`Fetched ${markets.length} markets, categorizing and processing...`);
+      
+      // Categorize markets
+      let cryptoCount = 0;
+      let politicsCount = 0;
+      let sportsCount = 0;
+      
+      for (const market of markets) {
+        const detectedCategory = this.detectCategory(market);
+        market.category = detectedCategory;
+        
+        if (detectedCategory === 'Crypto') cryptoCount++;
+        else if (detectedCategory === 'Politics') politicsCount++;
+        else if (detectedCategory === 'Sports') sportsCount++;
+      }
+      
+      console.log(`Categorized: ${cryptoCount} Crypto, ${politicsCount} Politics, ${sportsCount} Sports, ${markets.length - cryptoCount - politicsCount - sportsCount} Other`);
 
       let synced = 0;
-      for (const pmMarket of allMarkets) {
+      for (const pmMarket of markets) {
         try {
           await this.syncMarket(pmMarket);
           synced++;
@@ -86,7 +111,7 @@ export class MarketSyncService {
         }
       }
 
-      console.log(`Successfully synced ${synced}/${allMarkets.length} markets`);
+      console.log(`Successfully synced ${synced}/${markets.length} markets`);
       return synced;
     } catch (error) {
       console.error('Error during market sync:', error);

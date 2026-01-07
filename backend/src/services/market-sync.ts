@@ -19,7 +19,16 @@ export class MarketSyncService {
    */
   private detectCategory(market: PolymarketMarket): string {
     const question = (market.question || '').toLowerCase();
-    const tags = (market.tags || []).map(t => t.toLowerCase());
+    // Handle tags - they might be strings, numbers, or objects
+    const tags = (market.tags || []).map((t: any) => {
+      if (typeof t === 'string') return t.toLowerCase();
+      if (typeof t === 'number') return String(t);
+      if (t && typeof t === 'object') {
+        // Handle tag objects like {id, label, slug}
+        return (t.label || t.slug || String(t.id || '')).toLowerCase();
+      }
+      return String(t || '').toLowerCase();
+    });
     const category = (market.category || '').toLowerCase();
     
     // Crypto keywords

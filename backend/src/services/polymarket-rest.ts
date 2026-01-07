@@ -173,8 +173,9 @@ export class PolymarketRestClient {
         };
 
         // Only add tag_id if endpoint supports it
+        // Convert to number if it's a string (Gamma API expects number)
         if (supportsTagId && params?.tagId) {
-          requestParams.tag_id = params.tagId;
+          requestParams.tag_id = typeof params.tagId === 'string' ? parseInt(params.tagId, 10) : params.tagId;
         }
         
         // Add active/closed filters for Gamma API

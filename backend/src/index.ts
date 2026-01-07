@@ -45,8 +45,9 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 // Initialize Polymarket WebSocket client
+// Use the correct CLOB WebSocket URL: wss://ws-subscriptions-clob.polymarket.com/ws/
 const wsClient = new PolymarketWebSocketClient(
-  process.env.POLYMARKET_WS_URL || 'wss://clob.polymarket.com'
+  process.env.POLYMARKET_WS_URL || 'wss://ws-subscriptions-clob.polymarket.com/ws/'
 );
 const marketIngestion = new MarketIngestionService(wsClient, wsServer);
 

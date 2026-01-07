@@ -3,6 +3,7 @@ import { apiLimiter } from '../middleware/rateLimiter';
 import { query } from '../config/database';
 import { Market, MarketWithOutcomes, Outcome } from '../models/Market';
 import { cacheService } from '../services/cache-service';
+import { redis } from '../config/redis';
 
 const router = Router();
 
@@ -122,17 +123,38 @@ router.get('/:id', async (req: Request, res: Response) => {
     );
 
     // Get latest price for each outcome
+    // First try Redis (Last Traded Price), then fallback to database
     const pricesPromises = outcomesResult.rows.map(async (outcome: Outcome) => {
-      const priceResult = await query(
-        `SELECT * FROM price_history 
-         WHERE outcome_id = $1 
-         ORDER BY timestamp DESC 
-         LIMIT 1`,
-        [outcome.id]
-      );
+      // Try Redis first for fast access
+      const redisKey = `market:${id}:price:${outcome.tokenId}`;
+      let currentPrice = null;
+      
+      try {
+        const cachedPrice = await redis.get(redisKey);
+        if (cachedPrice) {
+          currentPrice = JSON.parse(cachedPrice);
+        }
+      } catch (error) {
+        // Redis lookup failed, fallback to database
+      }
+      
+      // Fallback to database if Redis doesn't have it
+      if (!currentPrice) {
+        const priceResult = await query(
+          `SELECT * FROM price_history 
+           WHERE outcome_id = $1 
+           ORDER BY timestamp DESC 
+           LIMIT 1`,
+          [outcome.id]
+        );
+        if (priceResult.rows.length > 0) {
+          currentPrice = priceResult.rows[0];
+        }
+      }
+      
       return {
         ...outcome,
-        currentPrice: priceResult.rows[0] || null,
+        currentPrice,
       };
     });
 

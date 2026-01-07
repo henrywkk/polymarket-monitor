@@ -2,7 +2,7 @@ import { query } from '../config/database';
 import { PolymarketWebSocketClient, PolymarketPriceEvent } from './polymarket-client';
 import { calculateImpliedProbability, calculateMidPrice, isValidPrice } from '../utils/probability';
 import { Market, Outcome } from '../models/Market';
-
+import { redis } from '../config/redis';
 import { WebSocketServer } from './websocket-server';
 
 export class MarketIngestionService {
@@ -95,7 +95,7 @@ export class MarketIngestionService {
    */
   private async handlePriceEvent(event: PolymarketPriceEvent): Promise<void> {
     try {
-      const { market: marketId, outcome: outcomeId, price } = event;
+      let { market: marketId, outcome: outcomeId, price } = event;
 
       // Validate prices
       if (!isValidPrice(price.bid) || !isValidPrice(price.ask)) {
@@ -108,19 +108,48 @@ export class MarketIngestionService {
       const impliedProbability = calculateImpliedProbability(price.bid, price.ask);
 
       // Get outcome record to get the outcome ID
+      // Note: outcomeId here is the asset_id (token_id) from CLOB WebSocket
+      let outcome: { id: string; market_id: string; token_id: string };
       const outcomeResult = await query(
-        'SELECT id FROM outcomes WHERE market_id = $1 AND token_id = $2',
-        [marketId, outcomeId]
+        'SELECT id, market_id, token_id FROM outcomes WHERE token_id = $1',
+        [outcomeId] // outcomeId is the asset_id (token_id)
       );
 
       if (outcomeResult.rows.length === 0) {
-        console.warn(`Outcome not found for market ${marketId}, outcome ${outcomeId}`);
-        return;
+        // Try alternative lookup by market_id if asset_id lookup fails
+        const altResult = await query(
+          'SELECT id, market_id, token_id FROM outcomes WHERE market_id = $1 AND token_id = $2',
+          [marketId, outcomeId]
+        );
+        if (altResult.rows.length === 0) {
+          console.warn(`Outcome not found for asset_id ${outcomeId} (market: ${marketId})`);
+          return;
+        }
+        outcome = altResult.rows[0];
+      } else {
+        outcome = outcomeResult.rows[0];
+        // Update marketId from database if it differs
+        marketId = outcome.market_id;
       }
 
-      const outcome = outcomeResult.rows[0];
+      // Store Last Traded Price in Redis for fast frontend access
+      // Key format: market:{marketId}:price:{tokenId}
+      const priceKey = `market:${marketId}:price:${outcome.token_id}`;
+      const lastPrice = {
+        bid: price.bid,
+        ask: price.ask,
+        mid: midPrice,
+        probability: impliedProbability,
+        timestamp: Date.now(),
+      };
+      await redis.setex(priceKey, 3600, JSON.stringify(lastPrice)); // Expire after 1 hour
+      await redis.setex(tokenPriceKey, 3600, JSON.stringify(lastPrice)); // Also by token_id
 
-      // Store price history
+      // Also store in a market-level cache for quick lookup
+      await redis.hset(`market:${marketId}:prices`, outcome.token_id, JSON.stringify(lastPrice));
+      await redis.expire(`market:${marketId}:prices`, 3600);
+
+      // Store price history in database
       await this.storePriceHistory({
         marketId,
         outcomeId: outcome.id,
@@ -135,10 +164,6 @@ export class MarketIngestionService {
         this.activeMarkets.set(marketId, new Set());
       }
       this.activeMarkets.get(marketId)!.add(outcome.id);
-
-      console.log(
-        `Price update: ${marketId}-${outcomeId} | Bid: ${price.bid}, Ask: ${price.ask}, Prob: ${impliedProbability.toFixed(2)}%`
-      );
 
       // Broadcast to connected clients
       if (this.wsServer) {
@@ -185,17 +210,68 @@ export class MarketIngestionService {
   }
 
   /**
-   * Subscribe to market updates
+   * Subscribe to market updates using asset_ids (token IDs)
+   * This is the correct format for CLOB WebSocket
    */
-  subscribeToMarket(marketId: string, outcomeId?: string): void {
-    this.wsClient.subscribe(marketId, outcomeId);
+  async subscribeToMarket(marketId: string): Promise<void> {
+    try {
+      // Get all token_ids (asset_ids) for this market
+      const result = await query(
+        'SELECT DISTINCT token_id FROM outcomes WHERE market_id = $1 AND token_id IS NOT NULL AND token_id != \'\'',
+        [marketId]
+      );
+
+      if (result.rows.length > 0) {
+        const assetIds = result.rows.map(row => row.token_id);
+        this.wsClient.subscribeToAssets(assetIds);
+        console.log(`Subscribed to market ${marketId} with ${assetIds.length} asset(s)`);
+      } else {
+        console.warn(`No token_ids found for market ${marketId}`);
+      }
+    } catch (error) {
+      console.error(`Error subscribing to market ${marketId}:`, error);
+    }
+  }
+
+  /**
+   * Subscribe to multiple markets at once (batch subscription)
+   */
+  async subscribeToMarkets(marketIds: string[]): Promise<void> {
+    try {
+      // Get all token_ids for all markets
+      const result = await query(
+        'SELECT DISTINCT token_id FROM outcomes WHERE market_id = ANY($1) AND token_id IS NOT NULL AND token_id != \'\'',
+        [marketIds]
+      );
+
+      if (result.rows.length > 0) {
+        const assetIds = result.rows.map(row => row.token_id);
+        // Batch subscribe to all asset_ids at once
+        this.wsClient.subscribeToAssets(assetIds);
+        console.log(`Subscribed to ${marketIds.length} markets with ${assetIds.length} total asset(s)`);
+      }
+    } catch (error) {
+      console.error(`Error subscribing to markets:`, error);
+    }
   }
 
   /**
    * Unsubscribe from market updates
    */
-  unsubscribeFromMarket(marketId: string, outcomeId?: string): void {
-    this.wsClient.unsubscribe(marketId, outcomeId);
+  async unsubscribeFromMarket(marketId: string): Promise<void> {
+    try {
+      const result = await query(
+        'SELECT DISTINCT token_id FROM outcomes WHERE market_id = $1 AND token_id IS NOT NULL AND token_id != \'\'',
+        [marketId]
+      );
+
+      if (result.rows.length > 0) {
+        const assetIds = result.rows.map(row => row.token_id);
+        this.wsClient.unsubscribeFromAssets(assetIds);
+      }
+    } catch (error) {
+      console.error(`Error unsubscribing from market ${marketId}:`, error);
+    }
   }
 
   /**

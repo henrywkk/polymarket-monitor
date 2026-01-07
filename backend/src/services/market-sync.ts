@@ -301,6 +301,22 @@ export class MarketSyncService {
       }
 
       console.log(`Successfully synced ${synced}/${allMarkets.length} markets`);
+      
+      // After syncing markets, subscribe to WebSocket updates for active markets
+      // This ensures we get real-time price updates
+      if (synced > 0) {
+        const marketIds = allMarkets
+          .map(m => m.conditionId || m.questionId || m.id)
+          .filter((id): id is string => !!id)
+          .slice(0, 100); // Limit to first 100 to avoid overwhelming WebSocket
+        
+        if (marketIds.length > 0) {
+          this.ingestionService.subscribeToMarkets(marketIds).catch((error: unknown) => {
+            console.warn('Failed to subscribe to markets after sync:', error);
+          });
+        }
+      }
+      
       return synced;
     } catch (error) {
       console.error('Error during market sync:', error);
@@ -430,6 +446,7 @@ export class MarketSyncService {
     await this.ingestionService.upsertMarket(market);
 
     // Sync outcomes if available
+    // After syncing outcomes, we'll subscribe to price updates
     if (pmMarket.outcomes && pmMarket.outcomes.length > 0) {
       for (const pmOutcome of pmMarket.outcomes) {
         const outcome: Omit<Outcome, 'createdAt'> = {
@@ -460,6 +477,13 @@ export class MarketSyncService {
       await this.ingestionService.upsertOutcome(yesOutcome);
       await this.ingestionService.upsertOutcome(noOutcome);
     }
+
+    // Subscribe to WebSocket updates for this market (non-blocking)
+    // This ensures we get real-time price updates for newly synced markets
+    this.ingestionService.subscribeToMarket(marketId).catch((error: unknown) => {
+      // Don't fail sync if subscription fails
+      console.warn(`Failed to subscribe to market ${marketId}:`, error);
+    });
   }
 }
 

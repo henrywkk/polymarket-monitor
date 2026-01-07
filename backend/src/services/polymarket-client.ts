@@ -126,54 +126,57 @@ export class PolymarketWebSocketClient {
   }
 
   private handleMessage(message: unknown): void {
-    if (typeof message === 'object' && message !== null) {
-      const msg = message as Record<string, any>;
-      const eventType = (msg.event_type || msg.type) as string;
+    if (Array.isArray(message)) {
+      message.forEach(msg => this.handleSingleMessage(msg));
+    } else {
+      this.handleSingleMessage(message);
+    }
+  }
 
-      // Log specific interesting messages
+  private handleSingleMessage(msg: any): void {
+    if (typeof msg !== 'object' || msg === null) return;
+
+    // Polymarket CLOB WebSocket events
+    // 1. Direct market messages (as seen in logs) often have asset_id, bids, asks
+    // 2. Explicit events have event_type or type
+    
+    const eventType = (msg.event_type || msg.type) as string;
+    const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
+
+    if (!assetId) {
+      // Ignore info messages or messages without IDs
       if (eventType !== 'info' && eventType !== 'pong') {
-        console.log(`[WebSocket Handler] Processing ${eventType} for ${msg.asset_id || 'multiple assets'}`);
+        // console.debug('[WebSocket] Message without assetId:', msg);
       }
+      return;
+    }
 
-      if (eventType === 'price_change' || eventType === 'book' || eventType === 'price_changed' || eventType === 'update') {
-        if (Array.isArray(msg.price_changes)) {
-          for (const pc of msg.price_changes) {
-            const assetId = (pc.asset_id || pc.token_id) as string;
-            const bid = parseFloat(String(pc.best_bid || pc.bid || 0));
-            const ask = parseFloat(String(pc.best_ask || pc.ask || 0));
-            if (assetId && (bid > 0 || ask > 0)) {
-              this.emitPriceEvent(assetId, bid, ask, (eventType === 'book' ? 'order_book_changed' : 'price_changed'));
-            }
-          }
-          return;
-        }
+    let bid = 0;
+    let ask = 0;
 
-        const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
-        if (!assetId) return;
-
-        let bid = 0;
-        let ask = 0;
-        if (msg.best_bid !== undefined) bid = typeof msg.best_bid === 'string' ? parseFloat(msg.best_bid) : msg.best_bid;
-        else if (msg.bid !== undefined) bid = typeof msg.bid === 'string' ? parseFloat(msg.bid) : msg.bid;
-
-        if (msg.best_ask !== undefined) ask = typeof msg.best_ask === 'string' ? parseFloat(msg.best_ask) : msg.best_ask;
-        else if (msg.ask !== undefined) ask = typeof msg.ask === 'string' ? parseFloat(msg.ask) : msg.ask;
-        
-        if (bid > 0 || ask > 0) {
-          this.emitPriceEvent(assetId, bid, ask, (eventType === 'book' ? 'order_book_changed' : 'price_changed'));
-        }
-        return;
+    // Extract prices based on different possible formats
+    if (msg.best_bid !== undefined && msg.best_ask !== undefined) {
+      bid = typeof msg.best_bid === 'string' ? parseFloat(msg.best_bid) : msg.best_bid;
+      ask = typeof msg.best_ask === 'string' ? parseFloat(msg.best_ask) : msg.best_ask;
+    } else if (Array.isArray(msg.bids) && Array.isArray(msg.asks)) {
+      // It's a book update with full bids/asks array
+      if (msg.bids.length > 0) {
+        const topBid = msg.bids[0];
+        bid = typeof topBid === 'object' ? parseFloat(String(topBid.price || 0)) : parseFloat(String(topBid));
       }
-      
-      if (eventType === 'last_trade_price' || eventType === 'trade') {
-        const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
-        if (!assetId) return;
-        const price = msg.price ? (typeof msg.price === 'string' ? parseFloat(msg.price) : msg.price) : 0;
-        if (price > 0) {
-          this.emitPriceEvent(assetId, price, price, 'price_changed');
-        }
-        return;
+      if (msg.asks.length > 0) {
+        const topAsk = msg.asks[0];
+        ask = typeof topAsk === 'object' ? parseFloat(String(topAsk.price || 0)) : parseFloat(String(topAsk));
       }
+    } else if (msg.price !== undefined) {
+      // Trade or simple price update
+      const price = typeof msg.price === 'string' ? parseFloat(msg.price) : msg.price;
+      bid = price;
+      ask = price;
+    }
+
+    if (bid > 0 || ask > 0) {
+      this.emitPriceEvent(assetId, bid, ask, (eventType === 'book' || msg.bids ? 'order_book_changed' : 'price_changed'));
     }
   }
 
@@ -218,11 +221,11 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    // Trying the most comprehensive subscription format for the CLOB subscription manager
+    // According to Polymarket docs, uppercase MARKET is the correct type
     const assetIdsArray = Array.from(this.subscribedAssetIds);
     
     const subscription = {
-      type: 'market',
+      type: 'MARKET',
       assets_ids: assetIdsArray
     };
 

@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.lcov
+.nyc_output
+
+# Production
+dist/
+build/
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+.dockerignore
+
+# TypeScript
+*.tsbuildinfo
+
+# OS
+Thumbs.db
+
+# Railway
+.railway/
+
+# Vercel
+.vercel/
+
+# Misc
+.cache/
+.temp/
+*.tmp
+

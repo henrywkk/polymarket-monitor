@@ -80,7 +80,7 @@ router.get('/', async (req: Request, res: Response) => {
       await cacheService.cacheTopMarkets(response);
     }
 
-    res.json(response);
+    return res.json(response);
   } catch (error) {
     console.error('Error fetching markets:', error);
     return res.status(500).json({ error: 'Failed to fetch markets' });
@@ -141,7 +141,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     // Cache the result
     await cacheService.cacheMarketDetail(id, marketWithOutcomes);
 
-    res.json(marketWithOutcomes);
+    return res.json(marketWithOutcomes);
   } catch (error) {
     console.error('Error fetching market:', error);
     return res.status(500).json({ error: 'Failed to fetch market' });
@@ -184,7 +184,7 @@ router.get('/:id/history', async (req: Request, res: Response) => {
     // Cache the result (longer TTL for history)
     await cacheService.cacheMarketHistory(id, timeframe, response, 60);
 
-    res.json(response);
+    return res.json(response);
   } catch (error) {
     console.error('Error fetching market history:', error);
     return res.status(500).json({ error: 'Failed to fetch market history' });

@@ -80,7 +80,7 @@ router.get('/', async (req: Request, res: Response) => {
       await cacheService.cacheTopMarkets(response);
     }
 
-    return     return res.json(response);
+    return res.json(response);
   } catch (error) {
     console.error('Error fetching markets:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -122,7 +122,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     );
 
     // Get latest price for each outcome
-    const pricesPromises = outcomesResult.rows.map(async (outcome) => {
+    const pricesPromises = outcomesResult.rows.map(async (outcome: Outcome) => {
       const priceResult = await query(
         `SELECT * FROM price_history 
          WHERE outcome_id = $1 

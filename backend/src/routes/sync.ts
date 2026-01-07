@@ -27,7 +27,7 @@ router.post('/', strictLimiter, async (_req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error syncing markets:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to sync markets',
       message: error instanceof Error ? error.message : 'Unknown error',
     });

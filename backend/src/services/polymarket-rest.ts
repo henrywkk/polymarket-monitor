@@ -145,17 +145,14 @@ export class PolymarketRestClient {
     closed?: boolean;
   }): Promise<PolymarketMarket[]> {
     try {
-      // Try Gamma API first (supports tag_id), then fallback to other endpoints
+      // Try Gamma API /events first (supports tag_id), then fallback to other endpoints
+      // Note: Gamma API /events returns array directly, not wrapped in an object
       const endpoints = [
         { 
           base: POLYMARKET_GAMMA_API, 
           path: '/events',
-          supportsTagId: true 
-        },
-        { 
-          base: POLYMARKET_GAMMA_API, 
-          path: '/markets',
-          supportsTagId: true 
+          supportsTagId: true,
+          isGammaEvents: true // Gamma /events returns array directly: [{...}, {...}]
         },
         { 
           base: POLYMARKET_API_V2, 
@@ -169,7 +166,7 @@ export class PolymarketRestClient {
         },
       ];
 
-      for (const { base, path, supportsTagId } of endpoints) {
+      for (const { base, path, supportsTagId, isGammaEvents } of endpoints) {
         const requestParams: Record<string, unknown> = {
           limit: params?.limit || 100,
           offset: params?.offset || 0,
@@ -198,7 +195,7 @@ export class PolymarketRestClient {
           const fullUrl = `${base}${path}`;
           console.log(`Attempting to fetch from ${fullUrl} with params:`, JSON.stringify(requestParams));
           
-          const response = await axios.get<PolymarketMarketsResponse>(
+          const response = await axios.get<PolymarketMarketsResponse | PolymarketMarketRaw[]>(
             fullUrl,
             {
               params: requestParams,
@@ -206,21 +203,27 @@ export class PolymarketRestClient {
             }
           );
 
-          // Log response structure for debugging
-          if (base === POLYMARKET_GAMMA_API) {
-            console.log(`Gamma API response structure:`, {
-              hasData: !!response.data?.data,
-              hasMarkets: !!response.data?.markets,
-              hasEvents: !!response.data?.events,
-              dataLength: response.data?.data?.length,
-              marketsLength: response.data?.markets?.length,
-              eventsLength: response.data?.events?.length,
-              keys: Object.keys(response.data || {}),
-            });
+          // Handle different response formats
+          // Gamma API /events returns array directly, not wrapped in an object
+          let rawMarkets: PolymarketMarketRaw[] = [];
+          
+          if (isGammaEvents) {
+            // Gamma /events endpoint returns array directly: [market1, market2, ...]
+            if (Array.isArray(response.data)) {
+              rawMarkets = response.data;
+            } else {
+              // Fallback: try wrapped format (shouldn't happen but just in case)
+              rawMarkets = (response.data as any)?.data || (response.data as any)?.events || [];
+            }
+          } else if (Array.isArray(response.data)) {
+            // Some other endpoints return array directly
+            rawMarkets = response.data;
+          } else {
+            // Wrapped responses: { data: [...] } or { markets: [...] }
+            const wrapped = response.data as PolymarketMarketsResponse;
+            rawMarkets = wrapped?.data || wrapped?.markets || wrapped?.events || [];
           }
 
-          // Handle different response formats
-          const rawMarkets = response.data?.data || response.data?.markets || response.data?.events || [];
           if (rawMarkets.length > 0) {
             const tagInfo = params?.tagId ? ` with tag_id=${params.tagId}` : '';
             console.log(`Successfully fetched ${rawMarkets.length} markets from ${base}${path}${tagInfo}`);
@@ -228,6 +231,9 @@ export class PolymarketRestClient {
             const normalizedMarkets = rawMarkets.map(normalizeMarket);
             return normalizedMarkets;
           } else {
+            if (base === POLYMARKET_GAMMA_API) {
+              console.log(`Gamma API returned empty result from ${fullUrl}. Response type: ${Array.isArray(response.data) ? 'array' : typeof response.data}, length: ${Array.isArray(response.data) ? response.data.length : 'N/A'}`);
+            }
             console.log(`No markets found in response from ${fullUrl} (trying next endpoint...)`);
           }
         } catch (error) {

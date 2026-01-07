@@ -82,6 +82,25 @@ export class PolymarketWebSocketClient {
         this.ws.on('message', (data: WebSocket.Data) => {
           try {
             const messageStr = data.toString();
+            
+            // Handle plain text messages (e.g., "INVALID OPERATION", "PONG")
+            if (typeof messageStr === 'string' && !messageStr.trim().startsWith('{') && !messageStr.trim().startsWith('[')) {
+              // Plain text message - could be PONG, error, or status
+              if (messageStr.trim() === 'PONG' || messageStr.trim() === 'pong') {
+                // Heartbeat acknowledged
+                return;
+              } else if (messageStr.trim() === 'INVALID OPERATION') {
+                // Server is telling us we need to subscribe first
+                console.warn('[WebSocket] Server responded with "INVALID OPERATION" - may need to subscribe to assets first');
+                return;
+              } else {
+                // Other plain text messages
+                console.log(`[WebSocket] Received plain text message: ${messageStr}`);
+                return;
+              }
+            }
+            
+            // Try to parse as JSON
             const message = JSON.parse(messageStr);
             
             // Handle PONG responses (Polymarket uses uppercase)
@@ -92,13 +111,17 @@ export class PolymarketWebSocketClient {
             
             // Log first few messages for debugging
             if (this.reconnectAttempts === 0) {
-              console.log(`[WebSocket Message] Received:`, JSON.stringify(message).substring(0, 200));
+              console.log(`[WebSocket Message] Received JSON:`, JSON.stringify(message).substring(0, 200));
             }
             
             this.handleMessage(message);
           } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
-            console.error('Raw message:', data.toString().substring(0, 200));
+            // If it's not JSON and not plain text we recognize, log it
+            const messageStr = data.toString();
+            if (!messageStr.trim().match(/^(PONG|pong|INVALID OPERATION)$/i)) {
+              console.error('Error parsing WebSocket message:', error);
+              console.error('Raw message:', messageStr.substring(0, 200));
+            }
           }
         });
 

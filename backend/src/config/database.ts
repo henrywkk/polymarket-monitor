@@ -18,14 +18,18 @@ pool.on('error', (err) => {
 });
 
 export const query = async (text: string, params?: unknown[]) => {
-  const start = Date.now();
   try {
     const res = await pool.query(text, params);
-    const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: res.rowCount });
+    // Removed verbose query logging to reduce Railway log rate limits
+    // Only log errors, not successful queries
     return res;
   } catch (error) {
-    console.error('Database query error', { text, error });
+    // Only log errors with query preview (first 200 chars) to avoid log spam
+    const queryPreview = text.length > 200 ? text.substring(0, 200) + '...' : text;
+    console.error('Database query error', { 
+      query: queryPreview, 
+      error: error instanceof Error ? error.message : String(error) 
+    });
     throw error;
   }
 };

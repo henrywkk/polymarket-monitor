@@ -83,24 +83,30 @@ export async function initializeDatabase(): Promise<void> {
     
     console.log(`Executing ${statements.length} SQL statements...`);
     
+    let successCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+    
     for (let i = 0; i < statements.length; i++) {
       const statement = statements[i];
       if (statement) {
         try {
           await query(statement);
-          console.log(`Executed statement ${i + 1}/${statements.length}`);
+          successCount++;
         } catch (error) {
-          // Log the error but continue
           const errorMsg = error instanceof Error ? error.message : String(error);
           if (errorMsg.includes('already exists') || errorMsg.includes('duplicate')) {
-            console.log(`Statement ${i + 1} skipped (already exists):`, statement.substring(0, 50));
+            skippedCount++;
           } else {
-            console.error(`Error executing statement ${i + 1}:`, errorMsg);
-            console.error('Statement preview:', statement.substring(0, 150));
+            errorCount++;
+            console.error(`Error executing statement ${i + 1}/${statements.length}:`, errorMsg);
           }
         }
       }
     }
+    
+    // Log summary instead of individual statements
+    console.log(`Database initialization: ${successCount} succeeded, ${skippedCount} skipped, ${errorCount} errors`);
     
     // Verify tables were created
     const tablesCheck = await query(`
@@ -110,8 +116,8 @@ export async function initializeDatabase(): Promise<void> {
       AND table_name IN ('markets', 'outcomes', 'price_history')
     `);
     
-    console.log(`Database initialization complete. Found ${tablesCheck.rows.length} tables:`, 
-      tablesCheck.rows.map((r: { table_name: string }) => r.table_name));
+    const tableNames = tablesCheck.rows.map((r: { table_name: string }) => r.table_name);
+    console.log(`Database initialization complete. Found ${tablesCheck.rows.length} tables: ${tableNames.join(', ')}`);
     
     if (tablesCheck.rows.length === 0) {
       console.warn('WARNING: No tables found after initialization!');

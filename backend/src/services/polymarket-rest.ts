@@ -92,11 +92,16 @@ function normalizeMarket(raw: PolymarketMarketRaw): PolymarketMarket {
       }))
     : raw.outcomes || [];
 
+  // Gamma API may use different field names - check multiple possibilities
+  const question = raw.question || raw.title || raw.name || raw.eventTitle || 
+                   (raw as any).event?.title || (raw as any).event?.question || 
+                   (raw as any).event?.name || undefined;
+
   return {
     id: raw.id || raw.question_id,
     questionId: raw.question_id,
     conditionId: raw.condition_id,
-    question: raw.question,
+    question: question,
     slug: raw.market_slug || raw.slug,
     description: raw.description,
     image: raw.image || raw.icon,

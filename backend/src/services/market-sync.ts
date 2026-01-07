@@ -331,10 +331,25 @@ export class MarketSyncService {
       }
     }
 
+    // Extract question - try multiple sources, fallback to slug-based title
+    let question = pmMarket.question;
+    if (!question && pmMarket.slug) {
+      // Convert slug to readable title as fallback
+      // e.g., "will-bitcoin-hit-150k" -> "Will Bitcoin Hit 150k"
+      question = pmMarket.slug
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ')
+        .replace(/\b(\w)/g, (char, index) => index === 0 ? char.toUpperCase() : char);
+    }
+    if (!question) {
+      question = 'Untitled Market';
+    }
+
     // Convert Polymarket market to our Market format
     const market: Omit<Market, 'createdAt' | 'updatedAt'> = {
       id: marketId,
-      question: pmMarket.question || 'Untitled Market',
+      question: question,
       slug: pmMarket.slug || marketId,
       category: categoryStr,
       endDate: pmMarket.endDateISO

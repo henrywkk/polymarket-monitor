@@ -1,6 +1,7 @@
 import { query } from '../config/database';
 import fs from 'fs';
 import path from 'path';
+import { SQL_SCHEMA } from './sql-schema';
 
 export async function initializeDatabase(): Promise<void> {
   try {
@@ -25,12 +26,13 @@ export async function initializeDatabase(): Promise<void> {
         sql = fs.readFileSync(altPath, 'utf-8');
         console.log('Found SQL file at:', altPath);
       } catch (altError) {
-        console.error('Could not find SQL file at either path:', {
+        console.warn('Could not find SQL file at either path, using embedded schema:', {
           production: sqlPath,
           development: altPath,
-          error: altError instanceof Error ? altError.message : altError,
         });
-        throw new Error('SQL initialization file not found');
+        // Use embedded SQL schema as fallback
+        sql = SQL_SCHEMA;
+        console.log('Using embedded SQL schema');
       }
     }
     

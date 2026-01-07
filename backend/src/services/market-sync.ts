@@ -52,18 +52,19 @@ export class MarketSyncService {
    * Sync a single market from Polymarket format to our database
    */
   private async syncMarket(pmMarket: PolymarketMarket): Promise<void> {
-    // Polymarket uses conditionId as the primary identifier
-    // Use conditionId first, then id, then tokenId as fallback
-    const marketId = pmMarket.conditionId || pmMarket.id || pmMarket.tokenId;
+    // Polymarket uses conditionId or questionId as the primary identifier
+    // Use conditionId first, then questionId, then id, then tokenId as fallback
+    const marketId = pmMarket.conditionId || pmMarket.questionId || pmMarket.id || pmMarket.tokenId;
     
     if (!marketId) {
-      console.warn('Skipping market without ID:', {
-        question: pmMarket.question,
-        conditionId: pmMarket.conditionId,
-        id: pmMarket.id,
-        tokenId: pmMarket.tokenId,
-        fullMarket: JSON.stringify(pmMarket, null, 2),
-      });
+      // Only log warning for first few skipped markets to avoid log spam
+      if (Math.random() < 0.1) {
+        console.warn('Skipping market without ID:', {
+          question: pmMarket.question?.substring(0, 50),
+          conditionId: pmMarket.conditionId,
+          questionId: pmMarket.questionId,
+        });
+      }
       return;
     }
 
@@ -72,7 +73,7 @@ export class MarketSyncService {
       id: marketId,
       question: pmMarket.question || 'Untitled Market',
       slug: pmMarket.slug || marketId,
-      category: pmMarket.category || 'Uncategorized',
+      category: pmMarket.category || (pmMarket.tags && pmMarket.tags[0]) || 'Uncategorized',
       endDate: pmMarket.endDateISO
         ? new Date(pmMarket.endDateISO)
         : pmMarket.endDate
@@ -88,15 +89,15 @@ export class MarketSyncService {
     if (pmMarket.outcomes && pmMarket.outcomes.length > 0) {
       for (const pmOutcome of pmMarket.outcomes) {
         const outcome: Omit<Outcome, 'createdAt'> = {
-          id: pmOutcome.id || `${marketId}-${pmOutcome.outcome}`,
+          id: pmOutcome.id || pmOutcome.tokenId || `${marketId}-${pmOutcome.outcome}`,
           marketId: marketId,
           outcome: pmOutcome.outcome,
-          tokenId: pmMarket.tokenId || pmMarket.conditionId || pmOutcome.id || '',
+          tokenId: pmOutcome.tokenId || pmOutcome.id || pmMarket.tokenId || pmMarket.conditionId || '',
         };
 
         await this.ingestionService.upsertOutcome(outcome);
       }
-    } else if (pmMarket.conditionId || pmMarket.tokenId) {
+    } else if (pmMarket.conditionId || pmMarket.questionId || pmMarket.tokenId) {
       // Binary market - create Yes/No outcomes
       const yesOutcome: Omit<Outcome, 'createdAt'> = {
         id: `${marketId}-yes`,

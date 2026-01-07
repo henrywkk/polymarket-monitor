@@ -35,7 +35,10 @@ export class PolymarketWebSocketClient {
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        console.log(`Connecting to Polymarket WebSocket: ${this.url}`);
+        // Only log connection attempts occasionally to reduce log spam
+        if (this.reconnectAttempts === 0 || this.reconnectAttempts % 5 === 0) {
+          console.log(`Connecting to Polymarket WebSocket: ${this.url}`);
+        }
         this.ws = new WebSocket(this.url);
 
         this.ws.on('open', () => {
@@ -62,7 +65,10 @@ export class PolymarketWebSocketClient {
         });
 
         this.ws.on('error', (error) => {
-          console.error('WebSocket error:', error);
+          // Only log errors occasionally to avoid log spam
+          if (this.reconnectAttempts === 0 || this.reconnectAttempts % 5 === 0) {
+            console.error('WebSocket error:', error instanceof Error ? error.message : String(error));
+          }
           this.isConnected = false;
           if (this.reconnectAttempts === 0) {
             reject(error);
@@ -70,7 +76,10 @@ export class PolymarketWebSocketClient {
         });
 
         this.ws.on('close', (code, reason) => {
-          console.log(`WebSocket closed: ${code} - ${reason.toString()}`);
+          // Only log close events occasionally
+          if (this.reconnectAttempts === 0 || this.reconnectAttempts % 5 === 0) {
+            console.log(`WebSocket closed: ${code} - ${reason.toString()}`);
+          }
           this.isConnected = false;
           this.attemptReconnect();
         });
@@ -171,7 +180,10 @@ export class PolymarketWebSocketClient {
       this.maxReconnectDelay
     );
 
-    console.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    // Only log reconnection attempts occasionally
+    if (this.reconnectAttempts % 5 === 0 || this.reconnectAttempts <= 3) {
+      console.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    }
 
     setTimeout(() => {
       this.connect().catch((error) => {

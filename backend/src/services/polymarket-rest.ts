@@ -1,8 +1,16 @@
 import axios from 'axios';
 
-// Try Polymarket's actual API endpoints
+// Polymarket API endpoints
 const POLYMARKET_API_BASE = 'https://clob.polymarket.com';
 const POLYMARKET_API_V2 = 'https://api.polymarket.com';
+const POLYMARKET_GAMMA_API = 'https://gamma-api.polymarket.com';
+
+// Known tag IDs for categories (can be fetched from /tags endpoint)
+export const TAG_IDS = {
+  CRYPTO: '100181', // User provided, verify with /tags endpoint
+  POLITICS: '21', // Example, verify with /tags endpoint
+  SPORTS: '22', // Example, verify with /tags endpoint
+} as const;
 
 // Raw API response (snake_case)
 export interface PolymarketMarketRaw {
@@ -67,6 +75,7 @@ export interface PolymarketMarket {
 export interface PolymarketMarketsResponse {
   data?: PolymarketMarketRaw[];
   markets?: PolymarketMarketRaw[];
+  events?: PolymarketMarketRaw[];
 }
 
 /**
@@ -110,42 +119,95 @@ export class PolymarketRestClient {
   }
 
   /**
-   * Fetch markets from Polymarket API
-   * Note: This uses a generic endpoint - adjust based on actual Polymarket API
+   * Fetch tags from Polymarket Gamma API
+   */
+  async fetchTags(): Promise<Array<{ id: string; label: string; slug: string }>> {
+    try {
+      const response = await axios.get(`${POLYMARKET_GAMMA_API}/tags`, {
+        params: { limit: 100 },
+        timeout: 10000,
+      });
+      return response.data?.data || response.data || [];
+    } catch (error) {
+      console.error('Error fetching tags:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch markets from Polymarket Gamma API using tag_id
    */
   async fetchMarkets(params?: {
     limit?: number;
     offset?: number;
-    category?: string;
+    tagId?: string;
     active?: boolean;
+    closed?: boolean;
   }): Promise<PolymarketMarket[]> {
     try {
-      // Try Polymarket API endpoints (try v2 API first, then CLOB API)
+      // Try Gamma API first (supports tag_id), then fallback to other endpoints
       const endpoints = [
-        { base: POLYMARKET_API_V2, path: '/v2/markets' },
-        { base: POLYMARKET_API_V2, path: '/markets' },
-        { base: this.baseURL, path: '/markets' },
-        { base: this.baseURL, path: '/v2/markets' },
+        { 
+          base: POLYMARKET_GAMMA_API, 
+          path: '/events',
+          supportsTagId: true 
+        },
+        { 
+          base: POLYMARKET_GAMMA_API, 
+          path: '/markets',
+          supportsTagId: true 
+        },
+        { 
+          base: POLYMARKET_API_V2, 
+          path: '/v2/markets',
+          supportsTagId: false 
+        },
+        { 
+          base: POLYMARKET_API_V2, 
+          path: '/markets',
+          supportsTagId: false 
+        },
       ];
 
-      for (const { base, path } of endpoints) {
+      for (const { base, path, supportsTagId } of endpoints) {
         try {
+          const requestParams: Record<string, unknown> = {
+            limit: params?.limit || 100,
+            offset: params?.offset || 0,
+          };
+
+          // Only add tag_id if endpoint supports it
+          if (supportsTagId && params?.tagId) {
+            requestParams.tag_id = params.tagId;
+          }
+          
+          // Add active/closed filters for Gamma API
+          if (supportsTagId) {
+            if (params?.active !== undefined) {
+              requestParams.active = params.active;
+            } else {
+              requestParams.active = true; // Default to active markets
+            }
+            if (params?.closed !== undefined) {
+              requestParams.closed = params.closed;
+            } else {
+              requestParams.closed = false; // Default to non-closed markets
+            }
+          }
+
           const response = await axios.get<PolymarketMarketsResponse>(
             `${base}${path}`,
             {
-              params: {
-                limit: params?.limit || 100,
-                offset: params?.offset || 0,
-                ...params,
-              },
+              params: requestParams,
               timeout: 10000,
             }
           );
 
           // Handle different response formats
-          const rawMarkets = response.data?.data || response.data?.markets || [];
+          const rawMarkets = response.data?.data || response.data?.markets || response.data?.events || [];
           if (rawMarkets.length > 0) {
-            console.log(`Successfully fetched ${rawMarkets.length} markets from ${base}${path}`);
+            const tagInfo = params?.tagId ? ` with tag_id=${params.tagId}` : '';
+            console.log(`Successfully fetched ${rawMarkets.length} markets from ${base}${path}${tagInfo}`);
             // Normalize snake_case to camelCase
             const normalizedMarkets = rawMarkets.map(normalizeMarket);
             return normalizedMarkets;

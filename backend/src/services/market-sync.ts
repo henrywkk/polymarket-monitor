@@ -1,5 +1,5 @@
 import { MarketIngestionService } from './market-ingestion';
-import { PolymarketRestClient, PolymarketMarket } from './polymarket-rest';
+import { PolymarketRestClient, PolymarketMarket, TAG_IDS } from './polymarket-rest';
 import { Market, Outcome } from '../models/Market';
 
 export class MarketSyncService {
@@ -69,40 +69,104 @@ export class MarketSyncService {
 
   /**
    * Sync markets from Polymarket API to database
-   * Fetches all markets and categorizes them intelligently
+   * Fetches markets by tag_id to ensure we get diverse categories
    */
   async syncMarkets(limit: number = 100): Promise<number> {
     try {
       console.log(`Starting market sync, fetching up to ${limit} markets...`);
       
-      // Fetch all markets (Polymarket API may not support category filtering)
-      const markets = await this.restClient.fetchMarkets({ limit });
+      // First, try to fetch tags to verify tag IDs
+      const tags = await this.restClient.fetchTags();
+      if (tags.length > 0) {
+        console.log(`Fetched ${tags.length} tags from Polymarket API`);
+        const cryptoTag = tags.find(t => t.label?.toLowerCase() === 'crypto' || t.slug?.toLowerCase() === 'crypto');
+        if (cryptoTag) {
+          console.log(`Found Crypto tag: id=${cryptoTag.id}, label=${cryptoTag.label}`);
+        }
+      }
       
-      if (markets.length === 0) {
+      // Fetch markets from different categories using tag_id
+      const tagIds = [
+        { tagId: TAG_IDS.CRYPTO, category: 'Crypto' },
+        { tagId: TAG_IDS.POLITICS, category: 'Politics' },
+        { tagId: TAG_IDS.SPORTS, category: 'Sports' },
+        { tagId: undefined, category: 'All' }, // Fetch all markets
+      ];
+      
+      const marketsPerCategory = Math.ceil(limit / tagIds.length);
+      let allMarkets: PolymarketMarket[] = [];
+      const seenIds = new Set<string>();
+
+      for (const { tagId, category } of tagIds) {
+        try {
+          const categoryMarkets = await this.restClient.fetchMarkets({ 
+            limit: marketsPerCategory,
+            tagId,
+            active: true,
+            closed: false,
+          });
+          
+          // Deduplicate and categorize markets
+          for (const market of categoryMarkets) {
+            const marketId = market.conditionId || market.questionId || market.id;
+            if (marketId && !seenIds.has(marketId)) {
+              seenIds.add(marketId);
+              // Set category based on tag_id used
+              if (tagId) {
+                market.category = category;
+              } else {
+                // Fallback to intelligent detection for markets without tag_id
+                market.category = this.detectCategory(market);
+              }
+              allMarkets.push(market);
+            }
+          }
+          
+          if (tagId) {
+            console.log(`Fetched ${categoryMarkets.length} markets with tag_id=${tagId} (${category})`);
+          } else {
+            console.log(`Fetched ${categoryMarkets.length} markets (all categories)`);
+          }
+        } catch (error) {
+          console.warn(`Error fetching markets for tag_id ${tagId}:`, error);
+          // Continue with other categories
+        }
+      }
+
+      // If we still don't have enough markets, fetch more without tag filter
+      if (allMarkets.length < limit) {
+        const additionalMarkets = await this.restClient.fetchMarkets({ 
+          limit: limit - allMarkets.length,
+          active: true,
+          closed: false,
+        });
+        
+        for (const market of additionalMarkets) {
+          const marketId = market.conditionId || market.questionId || market.id;
+          if (marketId && !seenIds.has(marketId)) {
+            seenIds.add(marketId);
+            market.category = this.detectCategory(market);
+            allMarkets.push(market);
+          }
+        }
+      }
+      
+      if (allMarkets.length === 0) {
         console.log('No markets fetched from Polymarket API');
         return 0;
       }
 
-      console.log(`Fetched ${markets.length} markets, categorizing and processing...`);
+      // Count by category
+      const categoryCounts = allMarkets.reduce((acc, m) => {
+        const cat = m.category || 'Uncategorized';
+        acc[cat] = (acc[cat] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
       
-      // Categorize markets
-      let cryptoCount = 0;
-      let politicsCount = 0;
-      let sportsCount = 0;
-      
-      for (const market of markets) {
-        const detectedCategory = this.detectCategory(market);
-        market.category = detectedCategory;
-        
-        if (detectedCategory === 'Crypto') cryptoCount++;
-        else if (detectedCategory === 'Politics') politicsCount++;
-        else if (detectedCategory === 'Sports') sportsCount++;
-      }
-      
-      console.log(`Categorized: ${cryptoCount} Crypto, ${politicsCount} Politics, ${sportsCount} Sports, ${markets.length - cryptoCount - politicsCount - sportsCount} Other`);
+      console.log(`Categorized markets:`, categoryCounts);
 
       let synced = 0;
-      for (const pmMarket of markets) {
+      for (const pmMarket of allMarkets) {
         try {
           await this.syncMarket(pmMarket);
           synced++;
@@ -111,7 +175,7 @@ export class MarketSyncService {
         }
       }
 
-      console.log(`Successfully synced ${synced}/${markets.length} markets`);
+      console.log(`Successfully synced ${synced}/${allMarkets.length} markets`);
       return synced;
     } catch (error) {
       console.error('Error during market sync:', error);

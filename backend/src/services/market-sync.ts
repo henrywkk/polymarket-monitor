@@ -1,6 +1,7 @@
 import { MarketIngestionService } from './market-ingestion';
 import { PolymarketRestClient, PolymarketMarket, TAG_IDS } from './polymarket-rest';
 import { Market, Outcome } from '../models/Market';
+import { query } from '../config/database';
 
 export class MarketSyncService {
   private restClient: PolymarketRestClient;
@@ -279,13 +280,24 @@ export class MarketSyncService {
       console.log(`Categorized markets:`, categoryCounts);
 
       let synced = 0;
+      let skipped = 0;
       for (const pmMarket of allMarkets) {
         try {
-          await this.syncMarket(pmMarket);
-          synced++;
+          // Smart sync: only sync if market has changed
+          const marketId = pmMarket.conditionId || pmMarket.questionId || pmMarket.id || '';
+          if (marketId && await this.hasMarketChanged(pmMarket, marketId)) {
+            await this.syncMarket(pmMarket);
+            synced++;
+          } else {
+            skipped++;
+          }
         } catch (error) {
           console.error(`Error syncing market ${pmMarket.id}:`, error);
         }
+      }
+      
+      if (skipped > 0) {
+        console.log(`Smart sync: ${synced} updated, ${skipped} skipped (no changes)`);
       }
 
       console.log(`Successfully synced ${synced}/${allMarkets.length} markets`);
@@ -297,7 +309,53 @@ export class MarketSyncService {
   }
 
   /**
+   * Check if a market has changed by comparing key fields
+   * Returns true if market should be updated
+   */
+  private async hasMarketChanged(pmMarket: PolymarketMarket, marketId: string): Promise<boolean> {
+    try {
+      const result = await query(
+        'SELECT question, slug, category, end_date, image_url, updated_at FROM markets WHERE id = $1',
+        [marketId]
+      );
+
+      if (result.rows.length === 0) {
+        return true; // New market, needs to be inserted
+      }
+
+      const existing = result.rows[0];
+      const newQuestion = pmMarket.question || '';
+      const newSlug = pmMarket.slug || marketId;
+      const newCategory = pmMarket.category || 'Uncategorized';
+      const newEndDate = pmMarket.endDateISO 
+        ? new Date(pmMarket.endDateISO).toISOString()
+        : pmMarket.endDate 
+        ? new Date(pmMarket.endDate).toISOString()
+        : null;
+      const newImageUrl = pmMarket.image || null;
+
+      // Compare fields - if any changed, return true
+      if (
+        existing.question !== newQuestion ||
+        existing.slug !== newSlug ||
+        existing.category !== newCategory ||
+        (existing.end_date?.toISOString() || null) !== newEndDate ||
+        existing.image_url !== newImageUrl
+      ) {
+        return true;
+      }
+
+      return false; // No changes detected
+    } catch (error) {
+      // On error, assume it needs updating to be safe
+      console.warn(`Error checking market changes for ${marketId}:`, error);
+      return true;
+    }
+  }
+
+  /**
    * Sync a single market from Polymarket format to our database
+   * Only updates if market has actually changed (smart sync)
    */
   private async syncMarket(pmMarket: PolymarketMarket): Promise<void> {
     // Polymarket uses conditionId or questionId as the primary identifier

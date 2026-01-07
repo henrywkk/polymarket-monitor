@@ -39,7 +39,13 @@ export class PolymarketWebSocketClient {
         if (this.reconnectAttempts === 0 || this.reconnectAttempts % 5 === 0) {
           console.log(`Connecting to Polymarket WebSocket: ${this.url}`);
         }
-        this.ws = new WebSocket(this.url);
+        
+        // Add headers to help with WebSocket upgrade
+        this.ws = new WebSocket(this.url, {
+          headers: {
+            'User-Agent': 'Polymarket-Monitor/1.0',
+          },
+        });
 
         this.ws.on('open', () => {
           console.log('Polymarket WebSocket connected');
@@ -67,11 +73,20 @@ export class PolymarketWebSocketClient {
         this.ws.on('error', (error) => {
           // Only log errors occasionally to avoid log spam
           if (this.reconnectAttempts === 0 || this.reconnectAttempts % 5 === 0) {
-            console.error('WebSocket error:', error instanceof Error ? error.message : String(error));
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            // Don't treat "Unexpected server response: 200" as a critical error
+            // This often means the endpoint doesn't support WebSocket or requires auth
+            if (errorMsg.includes('Unexpected server response: 200')) {
+              console.warn('WebSocket endpoint may not support WebSocket protocol. Continuing without real-time updates.');
+            } else {
+              console.error('WebSocket error:', errorMsg);
+            }
           }
           this.isConnected = false;
+          // Don't reject on first attempt - allow graceful degradation
           if (this.reconnectAttempts === 0) {
-            reject(error);
+            // Resolve instead of reject to allow server to continue
+            resolve();
           }
         });
 

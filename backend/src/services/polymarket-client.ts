@@ -1,5 +1,4 @@
 import WebSocket from 'ws';
-import { logger } from '../middleware/logger';
 
 export interface PolymarketPriceEvent {
   type: 'price_changed' | 'order_book_changed';

@@ -10,7 +10,7 @@ export const setWebSocketClient = (client: { isConnectionActive: () => boolean }
   wsClientRef = client;
 };
 
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
   try {
     const healthStatus = await getHealthStatus(wsClientRef);
     const statusCode = healthStatus.status === 'healthy' ? 200 : 503;

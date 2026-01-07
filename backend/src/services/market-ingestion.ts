@@ -1,7 +1,7 @@
 import { query } from '../config/database';
 import { PolymarketWebSocketClient, PolymarketPriceEvent } from './polymarket-client';
 import { calculateImpliedProbability, calculateMidPrice, isValidPrice } from '../utils/probability';
-import { Market, Outcome, PriceHistory } from '../models/Market';
+import { Market, Outcome } from '../models/Market';
 
 import { WebSocketServer } from './websocket-server';
 

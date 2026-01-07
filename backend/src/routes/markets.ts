@@ -83,7 +83,7 @@ router.get('/', async (req: Request, res: Response) => {
     res.json(response);
   } catch (error) {
     console.error('Error fetching markets:', error);
-    res.status(500).json({ error: 'Failed to fetch markets' });
+    return res.status(500).json({ error: 'Failed to fetch markets' });
   }
 });
 
@@ -144,7 +144,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     res.json(marketWithOutcomes);
   } catch (error) {
     console.error('Error fetching market:', error);
-    res.status(500).json({ error: 'Failed to fetch market' });
+    return res.status(500).json({ error: 'Failed to fetch market' });
   }
 });
 
@@ -187,7 +187,7 @@ router.get('/:id/history', async (req: Request, res: Response) => {
     res.json(response);
   } catch (error) {
     console.error('Error fetching market history:', error);
-    res.status(500).json({ error: 'Failed to fetch market history' });
+    return res.status(500).json({ error: 'Failed to fetch market history' });
   }
 });
 

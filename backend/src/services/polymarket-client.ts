@@ -195,29 +195,44 @@ export class PolymarketWebSocketClient {
     if (globalHandler) globalHandler(event);
   }
 
+  private subscriptionTimeout: NodeJS.Timeout | null = null;
+
   subscribeToAssets(assetIds: string[]): void {
-    if (!this.isConnected || !this.ws) {
-      assetIds.forEach(id => this.subscribedAssetIds.add(id));
+    // Add to our persistent set of monitored assets
+    assetIds.forEach(id => this.subscribedAssetIds.add(id));
+    
+    // Use a small debounce to batch multiple subscription calls into one
+    // This is important because each call now sends the FULL list of IDs
+    if (this.subscriptionTimeout) {
+      clearTimeout(this.subscriptionTimeout);
+    }
+
+    this.subscriptionTimeout = setTimeout(() => {
+      this.sendSubscription();
+      this.subscriptionTimeout = null;
+    }, 500); // 500ms debounce
+  }
+
+  private sendSubscription(): void {
+    if (!this.isConnected || !this.ws || this.subscribedAssetIds.size === 0) {
       return;
     }
 
-    // Standard CLOB subscription format
-    // Even on the /market endpoint, the type is usually 'subscribe'
-    const subscription = {
-      type: 'subscribe',
-      assets_ids: assetIds,
-    };
-
+    // The /ws/market endpoint expects a literal array of token ID strings
+    // This replaces any previous subscription list on this connection
+    const assetIdsArray = Array.from(this.subscribedAssetIds);
+    
     try {
-      const msg = JSON.stringify(subscription);
-      console.log(`[WebSocket Subscribe] Sending: ${msg}`);
+      const msg = JSON.stringify(assetIdsArray);
+      // Log only the first few IDs to avoid log bloat
+      const logIds = assetIdsArray.length > 5 
+        ? `[${assetIdsArray.slice(0, 5).join(', ')}... (+${assetIdsArray.length - 5} more)]`
+        : msg;
+      
+      console.log(`[WebSocket Subscribe] Sending full list of ${assetIdsArray.length} assets: ${logIds}`);
       this.ws.send(msg);
-      assetIds.forEach(id => {
-        this.subscribedAssetIds.add(id);
-        this.subscriptions.add(id);
-      });
     } catch (error) {
-      console.error(`Error subscribing to assets:`, error);
+      console.error(`Error sending subscription array:`, error);
     }
   }
 
@@ -226,28 +241,15 @@ export class PolymarketWebSocketClient {
   }
 
   unsubscribeFromAssets(assetIds: string[]): void {
-    if (!this.ws || !this.isConnected) {
-      assetIds.forEach(id => {
-        this.subscribedAssetIds.delete(id);
-        this.subscriptions.delete(id);
-      });
-      return;
-    }
+    let changed = false;
+    assetIds.forEach(id => {
+      if (this.subscribedAssetIds.delete(id)) {
+        changed = true;
+      }
+    });
 
-    const subscription = {
-      type: 'unsubscribe',
-      channel: 'market',
-      assets_ids: assetIds,
-    };
-
-    try {
-      this.ws.send(JSON.stringify(subscription));
-      assetIds.forEach(id => {
-        this.subscribedAssetIds.delete(id);
-        this.subscriptions.delete(id);
-      });
-    } catch (error) {
-      console.error(`Error unsubscribing from assets:`, error);
+    if (changed) {
+      this.sendSubscription();
     }
   }
 

@@ -137,29 +137,32 @@ export class PolymarketWebSocketClient {
     if (typeof msg !== 'object' || msg === null) return;
 
     // Polymarket CLOB WebSocket events
-    // 1. Direct market messages (as seen in logs) often have asset_id, bids, asks
-    // 2. Explicit events have event_type or type
-    
-    const eventType = (msg.event_type || msg.type) as string;
-    const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
-
-    if (!assetId) {
-      // Ignore info messages or messages without IDs
-      if (eventType !== 'info' && eventType !== 'pong') {
-        // console.debug('[WebSocket] Message without assetId:', msg);
+    // 1. Array of price_changes (most common for updates)
+    if (Array.isArray(msg.price_changes)) {
+      for (const pc of msg.price_changes) {
+        const assetId = (pc.asset_id || pc.token_id) as string;
+        const bid = parseFloat(String(pc.best_bid || pc.bid || 0));
+        const ask = parseFloat(String(pc.best_ask || pc.ask || 0));
+        if (assetId && (bid > 0 || ask > 0)) {
+          this.emitPriceEvent(assetId, bid, ask, 'price_changed');
+        }
       }
       return;
     }
 
+    // 2. Direct market messages or book updates
+    const eventType = (msg.event_type || msg.type) as string;
+    const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
+
+    if (!assetId) return;
+
     let bid = 0;
     let ask = 0;
 
-    // Extract prices based on different possible formats
     if (msg.best_bid !== undefined && msg.best_ask !== undefined) {
       bid = typeof msg.best_bid === 'string' ? parseFloat(msg.best_bid) : msg.best_bid;
       ask = typeof msg.best_ask === 'string' ? parseFloat(msg.best_ask) : msg.best_ask;
     } else if (Array.isArray(msg.bids) && Array.isArray(msg.asks)) {
-      // It's a book update with full bids/asks array
       if (msg.bids.length > 0) {
         const topBid = msg.bids[0];
         bid = typeof topBid === 'object' ? parseFloat(String(topBid.price || 0)) : parseFloat(String(topBid));
@@ -169,14 +172,14 @@ export class PolymarketWebSocketClient {
         ask = typeof topAsk === 'object' ? parseFloat(String(topAsk.price || 0)) : parseFloat(String(topAsk));
       }
     } else if (msg.price !== undefined) {
-      // Trade or simple price update
       const price = typeof msg.price === 'string' ? parseFloat(msg.price) : msg.price;
       bid = price;
       ask = price;
     }
 
     if (bid > 0 || ask > 0) {
-      this.emitPriceEvent(assetId, bid, ask, (eventType === 'book' || msg.bids ? 'order_book_changed' : 'price_changed'));
+      const type = (eventType === 'book' || msg.bids) ? 'order_book_changed' : 'price_changed';
+      this.emitPriceEvent(assetId, bid, ask, type);
     }
   }
 
@@ -216,27 +219,39 @@ export class PolymarketWebSocketClient {
     }, 500); // 500ms debounce
   }
 
+  private lastSentAssetCount = 0;
+
   private sendSubscription(): void {
     if (!this.isConnected || !this.ws || this.subscribedAssetIds.size === 0) {
       return;
     }
 
-    // According to Polymarket docs, uppercase MARKET is the correct type
+    // Only send if the count has changed or we haven't sent anything yet
+    // This prevents spamming the server with the same subscription list
+    if (this.subscribedAssetIds.size === this.lastSentAssetCount) {
+      // console.log(`[WebSocket Subscribe] Skipping: asset count unchanged (${this.lastSentAssetCount})`);
+      return;
+    }
+
+    // Official Polymarket docs and poly-websockets library use lowercase 'market'
     const assetIdsArray = Array.from(this.subscribedAssetIds);
     
     const subscription = {
-      type: 'MARKET',
+      type: 'market',
       assets_ids: assetIdsArray
     };
 
     try {
       const msg = JSON.stringify(subscription);
+      
+      // Clean up logging to show valid JSON-like format even for long lists
       const logIds = assetIdsArray.length > 5 
-        ? `[${assetIdsArray.slice(0, 5).join(', ')}... (+${assetIdsArray.length - 5} more)]`
+        ? `{"type":"market","assets_ids":["${assetIdsArray.slice(0, 5).join('", "')}"... (+${assetIdsArray.length - 5} more)]}`
         : msg;
       
-      console.log(`[WebSocket Subscribe] Sending: ${logIds}`);
+      console.log(`[WebSocket Subscribe] Sending update: ${logIds}`);
       this.ws.send(msg);
+      this.lastSentAssetCount = this.subscribedAssetIds.size;
     } catch (error) {
       console.error(`Error sending subscription:`, error);
     }

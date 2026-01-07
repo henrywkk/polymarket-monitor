@@ -113,10 +113,8 @@ export class PolymarketWebSocketClient {
               return;
             }
             
-            // Log first few messages for debugging
-            if (this.reconnectAttempts === 0) {
-              console.log(`[WebSocket Message] Received JSON:`, JSON.stringify(message).substring(0, 200));
-            }
+            // Log all messages for debugging (we need to see what we're actually receiving)
+            console.log(`[WebSocket Message] Received JSON:`, JSON.stringify(message).substring(0, 500));
             
             this.handleMessage(message);
           } catch (error) {
@@ -176,65 +174,147 @@ export class PolymarketWebSocketClient {
     if (typeof message === 'object' && message !== null) {
       const msg = message as Record<string, unknown>;
       
-      // CLOB WebSocket sends updates per migration guide:
-      // After migration, uses: { type: 'update', asset_id: '...', best_bid: ..., best_ask: ..., ... }
-      // See: https://docs.polymarket.com/developers/CLOB/websocket/market-channel-migration-guide
-      if (msg.type === 'update' || msg.type === 'price_update' || msg.type === 'price' || msg.type === 'price_changed' || msg.type === 'order_book_changed') {
-        // Extract asset_id (token_id) - this is the key field
+      // Polymarket uses event_type field (per poly-websockets library)
+      // Possible event types: price_change, book_update, last_trade_price, tick_size_change
+      const eventType = (msg.event_type || msg.type) as string;
+      
+      // Log all messages to see what we're actually receiving
+      console.log(`[WebSocket Handler] Processing message with event_type/type: ${eventType}`, {
+        hasAssetId: !!msg.asset_id,
+        hasBestBid: msg.best_bid !== undefined,
+        hasBestAsk: msg.best_ask !== undefined,
+        keys: Object.keys(msg).slice(0, 10),
+      });
+      
+      // Handle price_change events (most common)
+      if (eventType === 'price_change' || eventType === 'price_update' || eventType === 'update') {
+        // price_change events have price_changes array with multiple assets
+        if (msg.price_changes && Array.isArray(msg.price_changes)) {
+          const priceChanges = msg.price_changes as Array<{
+            asset_id?: string;
+            best_bid?: number | string;
+            best_ask?: number | string;
+            price?: number | string;
+          }>;
+          
+          for (const priceChange of priceChanges) {
+            const assetId = priceChange.asset_id as string;
+            if (!assetId) continue;
+            
+            // Extract bid/ask from price_change object
+            let bid = 0;
+            let ask = 0;
+            
+            if (priceChange.best_bid !== undefined) {
+              bid = typeof priceChange.best_bid === 'string' ? parseFloat(priceChange.best_bid) : priceChange.best_bid;
+            }
+            if (priceChange.best_ask !== undefined) {
+              ask = typeof priceChange.best_ask === 'string' ? parseFloat(priceChange.best_ask) : priceChange.best_ask;
+            }
+            if (priceChange.price !== undefined && (bid === 0 || ask === 0)) {
+              // If only price is provided, use it for both (simplified)
+              const price = typeof priceChange.price === 'string' ? parseFloat(priceChange.price) : priceChange.price;
+              if (bid === 0) bid = price;
+              if (ask === 0) ask = price;
+            }
+            
+            if (bid > 0 || ask > 0) {
+              this.emitPriceEvent(assetId, bid, ask, 'price_changed');
+            }
+          }
+          return;
+        }
+      }
+      
+      // Handle book_update events
+      if (eventType === 'book_update' || eventType === 'book' || eventType === 'order_book_changed') {
         const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
+        if (!assetId) return;
         
-        // Per migration guide, use best_bid and best_ask (not bid/ask)
-        // Price can be in different formats:
-        // 1. { best_bid: ..., best_ask: ... } (new format per migration guide)
-        // 2. { price: { best_bid: ..., best_ask: ... } }
-        // 3. { bid: ..., ask: ... } (legacy format)
+        // Extract best_bid/best_ask from book_update
         let bid = 0;
         let ask = 0;
         
-        // Prioritize best_bid/best_ask (new format)
+        if (msg.best_bid !== undefined) {
+          bid = typeof msg.best_bid === 'string' ? parseFloat(msg.best_bid) : (msg.best_bid as number);
+        }
+        if (msg.best_ask !== undefined) {
+          ask = typeof msg.best_ask === 'string' ? parseFloat(msg.best_ask) : (msg.best_ask as number);
+        }
+        
+        if (bid > 0 || ask > 0) {
+          this.emitPriceEvent(assetId, bid, ask, 'order_book_changed');
+        }
+        return;
+      }
+      
+      // Handle last_trade_price events
+      if (eventType === 'last_trade_price' || eventType === 'trade') {
+        const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
+        if (!assetId) return;
+        
+        const price = msg.price ? (typeof msg.price === 'string' ? parseFloat(msg.price) : msg.price as number) : 0;
+        if (price > 0) {
+          // Use price for both bid and ask (simplified for trade events)
+          this.emitPriceEvent(assetId, price, price, 'price_changed');
+        }
+        return;
+      }
+      
+      // Legacy format support
+      if (msg.type === 'update' || msg.type === 'price_update' || msg.type === 'price' || msg.type === 'price_changed') {
+        const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
+        if (!assetId) return;
+        
+        let bid = 0;
+        let ask = 0;
+        
         if (msg.best_bid !== undefined || msg.best_ask !== undefined) {
-          bid = (msg.best_bid as number) || 0;
-          ask = (msg.best_ask as number) || 0;
+          bid = typeof msg.best_bid === 'string' ? parseFloat(msg.best_bid as string) : (msg.best_bid as number) || 0;
+          ask = typeof msg.best_ask === 'string' ? parseFloat(msg.best_ask as string) : (msg.best_ask as number) || 0;
         } else if (msg.price && typeof msg.price === 'object') {
           const priceObj = msg.price as Record<string, unknown>;
-          bid = (priceObj.best_bid as number) || (priceObj.bid as number) || 0;
-          ask = (priceObj.best_ask as number) || (priceObj.ask as number) || 0;
+          bid = typeof priceObj.best_bid === 'string' ? parseFloat(priceObj.best_bid) : (priceObj.best_bid as number) || 0;
+          ask = typeof priceObj.best_ask === 'string' ? parseFloat(priceObj.best_ask) : (priceObj.ask as number) || 0;
         } else {
-          // Fallback to legacy format
-          bid = (msg.bid as number) || 0;
-          ask = (msg.ask as number) || 0;
+          bid = typeof msg.bid === 'string' ? parseFloat(msg.bid) : (msg.bid as number) || 0;
+          ask = typeof msg.ask === 'string' ? parseFloat(msg.ask) : (msg.ask as number) || 0;
         }
         
-        if (!assetId || (bid === 0 && ask === 0)) {
-          // Skip invalid messages
-          return;
-        }
-        
-        // Map asset_id to market/outcome
-        // asset_id is the token_id, which we'll use to look up the market in handlePriceEvent
-        const event: PolymarketPriceEvent = {
-          type: msg.type === 'order_book_changed' ? 'order_book_changed' : 'price_changed',
-          market: assetId, // Will be resolved to market_id in handlePriceEvent
-          outcome: assetId, // This is the asset_id (token_id)
-          price: {
-            bid,
-            ask,
-          },
-          timestamp: Date.now(),
-        };
-        
-        // Call registered handlers by asset_id
-        const handler = this.messageHandlers.get(assetId);
-        if (handler) {
-          handler(event);
-        }
-        
-        // Also call global handler if exists
-        const globalHandler = this.messageHandlers.get('*');
-        if (globalHandler) {
-          globalHandler(event);
+        if (bid > 0 || ask > 0) {
+          this.emitPriceEvent(assetId, bid, ask, 'price_changed');
         }
       }
+    }
+  }
+  
+  /**
+   * Emit a price event to registered handlers
+   */
+  private emitPriceEvent(assetId: string, bid: number, ask: number, eventType: 'price_changed' | 'order_book_changed'): void {
+    const event: PolymarketPriceEvent = {
+      type: eventType,
+      market: assetId, // Will be resolved to market_id in handlePriceEvent
+      outcome: assetId, // This is the asset_id (token_id)
+      price: {
+        bid,
+        ask,
+      },
+      timestamp: Date.now(),
+    };
+    
+    console.log(`[WebSocket] Emitting price event for asset_id: ${assetId}, bid: ${bid}, ask: ${ask}`);
+    
+    // Call registered handlers by asset_id
+    const handler = this.messageHandlers.get(assetId);
+    if (handler) {
+      handler(event);
+    }
+    
+    // Also call global handler if exists
+    const globalHandler = this.messageHandlers.get('*');
+    if (globalHandler) {
+      globalHandler(event);
     }
   }
 

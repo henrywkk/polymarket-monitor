@@ -96,6 +96,8 @@ export class MarketIngestionService {
   private async handlePriceEvent(event: PolymarketPriceEvent): Promise<void> {
     try {
       let { market: marketId, outcome: outcomeId, price } = event;
+      
+      console.log(`[Price Event] Handling price update for asset_id: ${outcomeId}, bid: ${price.bid}, ask: ${price.ask}`);
 
       // Validate prices
       if (!isValidPrice(price.bid) || !isValidPrice(price.ask)) {
@@ -256,8 +258,12 @@ export class MarketIngestionService {
       if (result.rows.length > 0) {
         const assetIds = result.rows.map(row => row.token_id);
         // Batch subscribe to all asset_ids at once
+        console.log(`[Subscription] Found ${assetIds.length} asset_ids for ${marketIds.length} markets`);
+        console.log(`[Subscription] Sample asset_ids:`, assetIds.slice(0, 5));
         this.wsClient.subscribeToAssets(assetIds);
-        console.log(`Subscribed to ${marketIds.length} markets with ${assetIds.length} total asset(s)`);
+        console.log(`[Subscription] Successfully subscribed to ${marketIds.length} markets with ${assetIds.length} total asset(s)`);
+      } else {
+        console.warn(`[Subscription] No token_ids found for markets:`, marketIds.slice(0, 5));
       }
     } catch (error) {
       console.error(`Error subscribing to markets:`, error);

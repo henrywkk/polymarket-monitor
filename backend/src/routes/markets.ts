@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { apiLimiter } from '../middleware/rateLimiter';
 import { query } from '../config/database';
-import { Market, MarketWithOutcomes } from '../models/Market';
+import { Market, MarketWithOutcomes, Outcome } from '../models/Market';
 import { cacheService } from '../services/cache-service';
 
 const router = Router();

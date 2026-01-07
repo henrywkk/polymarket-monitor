@@ -36,11 +36,50 @@ export async function initializeDatabase(): Promise<void> {
       }
     }
     
-    // Split by semicolons and execute each statement
-    const statements = sql
-      .split(';')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0 && !s.startsWith('--'));
+    // Execute SQL statements, handling dollar-quoted strings properly
+    // Split by semicolons but preserve dollar-quoted blocks
+    const statements: string[] = [];
+    let currentStatement = '';
+    let inDollarQuote = false;
+    let dollarTag = '';
+    
+    const lines = sql.split('\n');
+    
+    for (const line of lines) {
+      // Skip comments
+      if (line.trim().startsWith('--')) {
+        continue;
+      }
+      
+      currentStatement += line + '\n';
+      
+      // Check for dollar-quoted strings
+      const dollarQuoteRegex = /\$([^$]*)\$/g;
+      let match;
+      while ((match = dollarQuoteRegex.exec(line)) !== null) {
+        if (!inDollarQuote) {
+          inDollarQuote = true;
+          dollarTag = match[0];
+        } else if (match[0] === dollarTag) {
+          inDollarQuote = false;
+          dollarTag = '';
+        }
+      }
+      
+      // Only split on semicolon if not inside dollar-quoted string
+      if (!inDollarQuote && line.trim().endsWith(';')) {
+        const stmt = currentStatement.trim();
+        if (stmt.length > 0) {
+          statements.push(stmt);
+        }
+        currentStatement = '';
+      }
+    }
+    
+    // Add any remaining statement
+    if (currentStatement.trim().length > 0) {
+      statements.push(currentStatement.trim());
+    }
     
     console.log(`Executing ${statements.length} SQL statements...`);
     
@@ -57,7 +96,7 @@ export async function initializeDatabase(): Promise<void> {
             console.log(`Statement ${i + 1} skipped (already exists):`, statement.substring(0, 50));
           } else {
             console.error(`Error executing statement ${i + 1}:`, errorMsg);
-            console.error('Statement:', statement.substring(0, 100));
+            console.error('Statement preview:', statement.substring(0, 150));
           }
         }
       }

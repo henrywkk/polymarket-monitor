@@ -200,11 +200,8 @@ export class PolymarketRestClient {
         }
 
         try {
-          const fullUrl = `${base}${path}`;
-          console.log(`Attempting to fetch from ${fullUrl} with params:`, JSON.stringify(requestParams));
-          
           const response = await axios.get<PolymarketMarketsResponse | PolymarketMarketRaw[]>(
-            fullUrl,
+            `${base}${path}`,
             {
               params: requestParams,
               timeout: 10000,
@@ -212,59 +209,34 @@ export class PolymarketRestClient {
           );
 
           // Handle different response formats
-          // Gamma API /events returns array directly, not wrapped in an object
           let rawMarkets: PolymarketMarketRaw[] = [];
           
           if (isGammaEvents) {
-            // Gamma /events endpoint returns array directly: [market1, market2, ...]
             if (Array.isArray(response.data)) {
               rawMarkets = response.data;
             } else {
-              // Fallback: try wrapped format (shouldn't happen but just in case)
               rawMarkets = (response.data as any)?.data || (response.data as any)?.events || [];
             }
           } else if (Array.isArray(response.data)) {
-            // Some other endpoints return array directly
             rawMarkets = response.data;
           } else {
-            // Wrapped responses: { data: [...] } or { markets: [...] }
             const wrapped = response.data as PolymarketMarketsResponse;
             rawMarkets = wrapped?.data || wrapped?.markets || wrapped?.events || [];
           }
 
           if (rawMarkets.length > 0) {
-            const tagInfo = params?.tagId ? ` with tag_id=${params.tagId}` : '';
-            console.log(`Successfully fetched ${rawMarkets.length} markets from ${base}${path}${tagInfo}`);
             // Normalize snake_case to camelCase
             const normalizedMarkets = rawMarkets.map(normalizeMarket);
             return normalizedMarkets;
-          } else {
-            if (base === POLYMARKET_GAMMA_API) {
-              console.log(`Gamma API returned empty result from ${fullUrl}. Response type: ${Array.isArray(response.data) ? 'array' : typeof response.data}, length: ${Array.isArray(response.data) ? response.data.length : 'N/A'}`);
-            }
-            console.log(`No markets found in response from ${fullUrl} (trying next endpoint...)`);
           }
-        } catch (error) {
-          // Log all errors for debugging
-          if (axios.isAxiosError(error)) {
-            const status = error.response?.status;
-            const statusText = error.response?.statusText;
-            const url = `${base}${path}`;
-            if (status === 404) {
-              // Silently skip 404s
+            } catch (error) {
+              // Only log non-404 errors
+              if (axios.isAxiosError(error) && error.response?.status !== 404) {
+                // Silently skip 404s and other common errors
+                continue;
+              }
               continue;
-            } else {
-              const requestParamsStr = JSON.stringify(requestParams).substring(0, 200);
-              console.warn(`Failed to fetch from ${url}: ${status} ${statusText || ''}`, {
-                params: requestParamsStr,
-                responseData: error.response?.data ? JSON.stringify(error.response.data).substring(0, 200) : undefined,
-              });
             }
-          } else {
-            console.warn(`Failed to fetch from ${base}${path}:`, error instanceof Error ? error.message : String(error));
-          }
-          continue;
-        }
       }
 
       console.warn('Could not fetch markets from any known endpoint');

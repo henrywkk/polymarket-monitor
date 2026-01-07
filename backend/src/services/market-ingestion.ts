@@ -65,7 +65,7 @@ export class MarketIngestionService {
           market.imageUrl,
         ]
       );
-      console.log(`Upserted market: ${market.id}`);
+      // Removed verbose logging to reduce Railway log rate limit
     } catch (error) {
       console.error(`Error upserting market ${market.id}:`, error);
       throw error;

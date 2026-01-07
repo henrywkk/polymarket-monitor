@@ -102,13 +102,7 @@ export class MarketSyncService {
       let sportsTagId: string | undefined = TAG_IDS.SPORTS;
       
       if (tags.length > 0) {
-        console.log(`Fetched ${tags.length} tags from Polymarket API`);
-        
-        // Log first few tags to see their structure
-        const sampleTags = tags.slice(0, 5);
-        console.log('Sample tags:', JSON.stringify(sampleTags, null, 2));
-        
-        // Search for Crypto tag - look for exact match first, then partial matches
+        // Search for Crypto tag
         const cryptoTag = tags.find(t => {
           const label = (t.label || '').toLowerCase();
           const slug = (t.slug || '').toLowerCase();
@@ -118,27 +112,11 @@ export class MarketSyncService {
           const slug = (t.slug || '').toLowerCase();
           return label.includes('crypto') || slug.includes('crypto');
         });
-        
         if (cryptoTag) {
           cryptoTagId = String(cryptoTag.id);
-          console.log(`Found Crypto tag: id=${cryptoTag.id}, label=${cryptoTag.label}, slug=${cryptoTag.slug}`);
-        } else {
-          console.warn(`Crypto tag not found in fetched tags. Using default: ${TAG_IDS.CRYPTO}`);
-          // Search through all tags for crypto-related tags
-          const cryptoRelatedTags = tags.filter(t => {
-            const label = (t.label || '').toLowerCase();
-            const slug = (t.slug || '').toLowerCase();
-            return label.includes('crypto') || slug.includes('crypto') || 
-                   label.includes('bitcoin') || slug.includes('bitcoin') ||
-                   label.includes('ethereum') || slug.includes('ethereum');
-          });
-          if (cryptoRelatedTags.length > 0) {
-            console.log(`Found ${cryptoRelatedTags.length} crypto-related tags:`, 
-              cryptoRelatedTags.map(t => ({ id: t.id, label: t.label, slug: t.slug })));
-          }
         }
         
-        // Search for Politics tag - look for exact match first, then partial matches
+        // Search for Politics tag
         const politicsTag = tags.find(t => {
           const label = (t.label || '').toLowerCase();
           const slug = (t.slug || '').toLowerCase();
@@ -149,15 +127,11 @@ export class MarketSyncService {
           return label.includes('politic') || slug.includes('politic') ||
                  label.includes('election') || slug.includes('election');
         });
-        
         if (politicsTag) {
           politicsTagId = String(politicsTag.id);
-          console.log(`Found Politics tag: id=${politicsTag.id}, label=${politicsTag.label}, slug=${politicsTag.slug}`);
-        } else {
-          console.warn(`Politics tag not found in fetched tags. Using default: ${TAG_IDS.POLITICS}`);
         }
         
-        // Search for Sports tag - look for exact match first, then partial matches
+        // Search for Sports tag
         const sportsTag = tags.find(t => {
           const label = (t.label || '').toLowerCase();
           const slug = (t.slug || '').toLowerCase();
@@ -167,29 +141,9 @@ export class MarketSyncService {
           const slug = (t.slug || '').toLowerCase();
           return label.includes('sport') || slug.includes('sport');
         });
-        
         if (sportsTag) {
           sportsTagId = String(sportsTag.id);
-          console.log(`Found Sports tag: id=${sportsTag.id}, label=${sportsTag.label}, slug=${sportsTag.slug}`);
-        } else {
-          console.warn(`Sports tag not found in fetched tags. Using default: ${TAG_IDS.SPORTS}`);
         }
-        
-        // Log all category-related tags to help identify correct IDs
-        const categoryTags = tags.filter(t => {
-          const label = (t.label || '').toLowerCase();
-          const slug = (t.slug || '').toLowerCase();
-          return label.includes('crypto') || slug.includes('crypto') ||
-                 label.includes('politic') || slug.includes('politic') ||
-                 label.includes('sport') || slug.includes('sport') ||
-                 label.includes('election') || slug.includes('election');
-        });
-        if (categoryTags.length > 0) {
-          console.log(`Found ${categoryTags.length} category-related tags:`, 
-            categoryTags.map(t => ({ id: t.id, label: t.label, slug: t.slug })));
-        }
-      } else {
-        console.warn('No tags fetched, using default tag IDs');
       }
       
       // Fetch markets from different categories using tag_slug (more reliable than tag_id)
@@ -212,14 +166,15 @@ export class MarketSyncService {
       
       let allMarkets: PolymarketMarket[] = [];
       const seenIds = new Set<string>();
+      const fetchSummary: Record<string, number> = {};
 
       for (const { tagSlug, tagId, category, subTags } of categoryConfigs) {
         // Fetch from main tag
         try {
           const categoryMarkets = await this.restClient.fetchMarkets({ 
             limit: marketsPerOperation,
-            tagSlug, // Prefer tag_slug (more reliable)
-            tagId: tagSlug ? undefined : tagId, // Only use tagId if tagSlug is not available
+            tagSlug,
+            tagId: tagSlug ? undefined : tagId,
             active: true,
             closed: false,
           });
@@ -234,19 +189,15 @@ export class MarketSyncService {
             }
           }
           
-          if (tagSlug) {
-            console.log(`Fetched ${categoryMarkets.length} markets with tag_slug=${tagSlug} (${category})`);
-          } else if (tagId) {
-            console.log(`Fetched ${categoryMarkets.length} markets with tag_id=${tagId} (${category})`);
-          } else {
-            console.log(`Fetched ${categoryMarkets.length} markets (all categories)`);
-          }
+          const tagKey = tagSlug || tagId || 'all';
+          fetchSummary[`${category}:${tagKey}`] = categoryMarkets.length;
         } catch (error) {
-          console.warn(`Error fetching markets for ${category} (tag_slug=${tagSlug || tagId || 'none'}):`, error);
+          console.warn(`Error fetching ${category} markets:`, error instanceof Error ? error.message : String(error));
         }
         
         // For Crypto, also fetch from sub-tags
         if (category === 'Crypto' && subTags.length > 0) {
+          const subTagCounts: Record<string, number> = {};
           for (const subTag of subTags) {
             try {
               const subTagMarkets = await this.restClient.fetchMarkets({
@@ -261,23 +212,29 @@ export class MarketSyncService {
                 const marketId = market.conditionId || market.questionId || market.id;
                 if (marketId && !seenIds.has(marketId)) {
                   seenIds.add(marketId);
-                  market.category = 'Crypto'; // All sub-tags are crypto-related
+                  market.category = 'Crypto';
                   allMarkets.push(market);
                 }
               }
               
-              console.log(`Fetched ${subTagMarkets.length} markets with tag_slug=${subTag} (Crypto sub-tag)`);
+              subTagCounts[subTag] = subTagMarkets.length;
             } catch (error) {
-              console.warn(`Error fetching markets for crypto sub-tag ${subTag}:`, error);
+              // Only log errors, not individual fetches
             }
+          }
+          if (Object.keys(subTagCounts).length > 0) {
+            fetchSummary[`Crypto:sub-tags`] = Object.values(subTagCounts).reduce((a, b) => a + b, 0);
           }
         }
       }
       
-      // Log summary of Crypto markets fetched
+      // Log summary of all fetches in one line
+      const summaryStr = Object.entries(fetchSummary).map(([key, count]) => `${key}=${count}`).join(', ');
+      console.log(`Market fetch summary: ${summaryStr}`);
+      
       const cryptoMarketsCount = allMarkets.filter(m => m.category === 'Crypto').length;
       if (cryptoMarketsCount > 0) {
-        console.log(`Total Crypto markets fetched: ${cryptoMarketsCount} (from main tag + ${cryptoSubTags.length} sub-tags)`);
+        console.log(`Total unique Crypto markets: ${cryptoMarketsCount}`);
       }
 
       // If we still don't have enough markets, fetch more without tag filter

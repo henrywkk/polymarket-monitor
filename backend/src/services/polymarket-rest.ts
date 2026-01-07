@@ -135,12 +135,13 @@ export class PolymarketRestClient {
   }
 
   /**
-   * Fetch markets from Polymarket Gamma API using tag_id
+   * Fetch markets from Polymarket Gamma API using tag_id or tag_slug
    */
   async fetchMarkets(params?: {
     limit?: number;
     offset?: number;
     tagId?: string;
+    tagSlug?: string;
     active?: boolean;
     closed?: boolean;
   }): Promise<PolymarketMarket[]> {
@@ -172,10 +173,16 @@ export class PolymarketRestClient {
           offset: params?.offset || 0,
         };
 
-        // Only add tag_id if endpoint supports it
-        // Convert to number if it's a string (Gamma API expects number)
-        if (supportsTagId && params?.tagId) {
-          requestParams.tag_id = typeof params.tagId === 'string' ? parseInt(params.tagId, 10) : params.tagId;
+        // Only add tag_id or tag_slug if endpoint supports it
+        // Gamma API supports both tag_id (number) and tag_slug (string)
+        if (supportsTagId) {
+          if (params?.tagSlug) {
+            // Prefer tag_slug over tag_id (more reliable)
+            requestParams.tag_slug = params.tagSlug;
+          } else if (params?.tagId) {
+            // Fallback to tag_id (convert to number if string)
+            requestParams.tag_id = typeof params.tagId === 'string' ? parseInt(params.tagId, 10) : params.tagId;
+          }
         }
         
         // Add active/closed filters for Gamma API

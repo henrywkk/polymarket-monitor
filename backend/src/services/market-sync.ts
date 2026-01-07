@@ -192,23 +192,24 @@ export class MarketSyncService {
         console.warn('No tags fetched, using default tag IDs');
       }
       
-      // Fetch markets from different categories using tag_id
-      const tagIds = [
-        { tagId: cryptoTagId, category: 'Crypto' },
-        { tagId: politicsTagId, category: 'Politics' },
-        { tagId: sportsTagId, category: 'Sports' },
-        { tagId: undefined, category: 'All' }, // Fetch all markets
+      // Fetch markets from different categories using tag_slug (more reliable than tag_id)
+      const categoryConfigs = [
+        { tagSlug: 'crypto', tagId: cryptoTagId, category: 'Crypto' },
+        { tagSlug: 'politics', tagId: politicsTagId, category: 'Politics' },
+        { tagSlug: 'sports', tagId: sportsTagId, category: 'Sports' },
+        { tagSlug: undefined, tagId: undefined, category: 'All' }, // Fetch all markets
       ];
       
-      const marketsPerCategory = Math.ceil(limit / tagIds.length);
+      const marketsPerCategory = Math.ceil(limit / categoryConfigs.length);
       let allMarkets: PolymarketMarket[] = [];
       const seenIds = new Set<string>();
 
-      for (const { tagId, category } of tagIds) {
+      for (const { tagSlug, tagId, category } of categoryConfigs) {
         try {
           const categoryMarkets = await this.restClient.fetchMarkets({ 
             limit: marketsPerCategory,
-            tagId,
+            tagSlug, // Prefer tag_slug (more reliable)
+            tagId: tagSlug ? undefined : tagId, // Only use tagId if tagSlug is not available
             active: true,
             closed: false,
           });
@@ -218,19 +219,19 @@ export class MarketSyncService {
             const marketId = market.conditionId || market.questionId || market.id;
             if (marketId && !seenIds.has(marketId)) {
               seenIds.add(marketId);
-              // Set category based on tag_id used
-              if (tagId) {
+              // Set category based on tag_slug/tag_id used
+              if (tagSlug || tagId) {
                 market.category = category;
               } else {
-                // Fallback to intelligent detection for markets without tag_id
+                // Fallback to intelligent detection for markets without tag filter
                 market.category = this.detectCategory(market);
               }
               allMarkets.push(market);
             }
           }
           
-          if (tagId) {
-            console.log(`Fetched ${categoryMarkets.length} markets with tag_id=${tagId} (${category})`);
+          if (tagSlug) {
+            console.log(`Fetched ${categoryMarkets.length} markets with tag_slug=${tagSlug} (${category})`);
             // Log sample markets to verify they match the expected category
             if (categoryMarkets.length > 0) {
               const sample = categoryMarkets.slice(0, 3).map(m => ({
@@ -239,8 +240,10 @@ export class MarketSyncService {
                 category: m.category,
                 tags: m.tags,
               }));
-              console.log(`Sample markets from tag_id=${tagId}:`, JSON.stringify(sample, null, 2));
+              console.log(`Sample markets from tag_slug=${tagSlug}:`, JSON.stringify(sample, null, 2));
             }
+          } else if (tagId) {
+            console.log(`Fetched ${categoryMarkets.length} markets with tag_id=${tagId} (${category})`);
           } else {
             console.log(`Fetched ${categoryMarkets.length} markets (all categories)`);
           }

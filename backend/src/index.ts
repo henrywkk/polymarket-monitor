@@ -70,7 +70,8 @@ const startServer = async () => {
     await initializeDatabase();
 
     // Sync markets from Polymarket API (non-blocking)
-    marketSync.syncMarkets(100).catch((error: unknown) => {
+    // Fetch more markets to ensure we get diverse categories including crypto
+    marketSync.syncMarkets(500).catch((error: unknown) => {
       console.error('Error during initial market sync:', error);
     });
 

@@ -16,22 +16,68 @@ export class MarketSyncService {
 
   /**
    * Sync markets from Polymarket API to database
+   * Fetches markets from multiple categories to ensure diversity
    */
   async syncMarkets(limit: number = 100): Promise<number> {
     try {
       console.log(`Starting market sync, fetching up to ${limit} markets...`);
       
-      const markets = await this.restClient.fetchMarkets({ limit });
+      // Fetch markets from different categories to ensure diversity
+      const categories = ['Crypto', 'Politics', 'Sports', 'Entertainment', undefined]; // undefined = all markets
+      const marketsPerCategory = Math.ceil(limit / categories.length);
       
-      if (markets.length === 0) {
+      let allMarkets: PolymarketMarket[] = [];
+      const seenIds = new Set<string>();
+
+      for (const category of categories) {
+        try {
+          const categoryMarkets = await this.restClient.fetchMarkets({ 
+            limit: marketsPerCategory,
+            category 
+          });
+          
+          // Deduplicate markets
+          for (const market of categoryMarkets) {
+            const marketId = market.conditionId || market.questionId || market.id;
+            if (marketId && !seenIds.has(marketId)) {
+              seenIds.add(marketId);
+              allMarkets.push(market);
+            }
+          }
+          
+          if (category) {
+            console.log(`Fetched ${categoryMarkets.length} markets from category: ${category}`);
+          }
+        } catch (error) {
+          console.warn(`Error fetching markets for category ${category}:`, error);
+          // Continue with other categories
+        }
+      }
+
+      // If we still don't have enough markets, fetch more without category filter
+      if (allMarkets.length < limit) {
+        const additionalMarkets = await this.restClient.fetchMarkets({ 
+          limit: limit - allMarkets.length 
+        });
+        
+        for (const market of additionalMarkets) {
+          const marketId = market.conditionId || market.questionId || market.id;
+          if (marketId && !seenIds.has(marketId)) {
+            seenIds.add(marketId);
+            allMarkets.push(market);
+          }
+        }
+      }
+
+      if (allMarkets.length === 0) {
         console.log('No markets fetched from Polymarket API');
         return 0;
       }
 
-      console.log(`Fetched ${markets.length} markets, processing...`);
+      console.log(`Fetched ${allMarkets.length} unique markets, processing...`);
 
       let synced = 0;
-      for (const pmMarket of markets) {
+      for (const pmMarket of allMarkets) {
         try {
           await this.syncMarket(pmMarket);
           synced++;
@@ -40,7 +86,7 @@ export class MarketSyncService {
         }
       }
 
-      console.log(`Successfully synced ${synced}/${markets.length} markets`);
+      console.log(`Successfully synced ${synced}/${allMarkets.length} markets`);
       return synced;
     } catch (error) {
       console.error('Error during market sync:', error);

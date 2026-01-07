@@ -50,7 +50,8 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Create trigger for markets table
+-- Create trigger for markets table (drop first if exists to make it idempotent)
+DROP TRIGGER IF EXISTS update_markets_updated_at ON markets;
 CREATE TRIGGER update_markets_updated_at BEFORE UPDATE ON markets
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

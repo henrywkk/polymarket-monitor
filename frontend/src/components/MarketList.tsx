@@ -54,8 +54,18 @@ const MarketRow = ({
 
   // Use real-time value if available, otherwise fallback to static data
   const initialProb = getProbabilityDisplay(market);
-  const currentProbValue = priceUpdate ? Number(priceUpdate.impliedProbability) : initialProb.value;
-  const isHighProbability = currentProbValue > 70 || currentProbValue < 30;
+  
+  // For expected value markets, we don't update the central number in real-time 
+  // because we only get updates for one bucket at a time, not the whole expected value.
+  // We keep the initial expected value but show the pulse for activity.
+  const isExpectedValue = initialProb.label === 'Expected Value';
+  const currentProbValue = (isExpectedValue || !priceUpdate) 
+    ? initialProb.value 
+    : Number(priceUpdate.impliedProbability);
+    
+  const isHighProbability = isExpectedValue 
+    ? currentProbValue > 4.0 // High growth for GDP/Expected Value
+    : currentProbValue > 70 || currentProbValue < 30; // High confidence for Probability
   
   // Update last trade time if we get a real-time pulse
   const lastTradeTime = priceUpdate ? new Date().toISOString() : market.lastTradeAt;

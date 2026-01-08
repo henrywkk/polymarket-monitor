@@ -293,6 +293,7 @@ export const MarketList = () => {
         return {
           value,
           label: 'Probability',
+          outcome: (market as any).probabilityDisplay?.outcome, // Try to get outcome from display object if it exists
         };
       }
     }

@@ -575,14 +575,33 @@ export class MarketSyncService {
       }
       
       for (const pmOutcome of outcomesWithTokens) {
+        const outcomeId = pmOutcome.id || pmOutcome.tokenId || `${marketId}-${pmOutcome.outcome}`;
         const outcome: Omit<Outcome, 'createdAt'> = {
-          id: pmOutcome.id || pmOutcome.tokenId || `${marketId}-${pmOutcome.outcome}`,
+          id: outcomeId,
           marketId: marketId,
           outcome: pmOutcome.outcome,
           tokenId: pmOutcome.tokenId || pmOutcome.id || pmMarket.tokenId || pmMarket.conditionId || '',
         };
 
         await this.ingestionService.upsertOutcome(outcome);
+
+        // If outcome has an initial price, store it in price_history
+        if (pmOutcome.price !== undefined && pmOutcome.price !== null) {
+          const price = Number(pmOutcome.price);
+          if (!isNaN(price)) {
+            // We'll use the price as mid, and set tiny spread for initial data
+            // Implied probability is price * 100
+            await this.ingestionService.handlePriceEvent({
+              marketId: marketId,
+              outcomeId: outcomeId,
+              bidPrice: price * 0.99,
+              askPrice: price * 1.01,
+              midPrice: price,
+              impliedProbability: price * 100,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
       }
     } else if (pmMarket.conditionId || pmMarket.questionId || pmMarket.tokenId) {
       // Binary market - create Yes/No outcomes

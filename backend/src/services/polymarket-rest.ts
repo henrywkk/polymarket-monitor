@@ -336,10 +336,20 @@ export class PolymarketRestClient {
             });
           }
           
-          const result = tokens.map((t: any) => ({
-            token_id: t.token_id || t.asset_id || t.id,
-            outcome: t.outcome || t.label || t.name || t.title || '',
-          })).filter(t => t.token_id);
+          const result = tokens.map((t: any, idx: number) => {
+            // Try to get price from various fields
+            let price: number | undefined = undefined;
+            const rawPrice = t.price || (data.outcomePrices && data.outcomePrices[idx]) || data.lastTradePrice;
+            if (rawPrice) {
+              price = parseFloat(rawPrice);
+            }
+
+            return {
+              token_id: t.token_id || t.asset_id || t.id,
+              outcome: t.outcome || t.label || t.name || t.title || '',
+              price: !isNaN(price as number) ? price : undefined,
+            };
+          }).filter(t => t.token_id);
           
           if (result.length > 0) {
             console.log(`[Sync] Found ${result.length} tokens via ${endpoint}`);
@@ -392,11 +402,20 @@ export class PolymarketRestClient {
             // Each sub-market typically has 2 tokens (Yes/No), but we store the bucket name
             // We'll use the first token ID (typically the "Yes" token)
             if (bucketName && tokenIds.length > 0) {
+              // Extract price if available from outcomePrices or lastTradePrice
+              let price: number | undefined = undefined;
+              if (subMarket.outcomePrices && Array.isArray(subMarket.outcomePrices) && subMarket.outcomePrices.length > 0) {
+                price = parseFloat(subMarket.outcomePrices[0]);
+              } else if (subMarket.lastTradePrice) {
+                price = parseFloat(subMarket.lastTradePrice);
+              }
+
               // Create one outcome per bucket using the first token ID
               // The bucket name (e.g., "<0.5%") is what we want to display
               allTokens.push({
                 token_id: tokenIds[0], // Use first token (Yes token)
                 outcome: bucketName, // Use bucket name instead of Yes/No
+                price: !isNaN(price as number) ? price : undefined,
               });
             } else if (bucketName) {
               // If we have bucket name but no token IDs, we still want to store the bucket

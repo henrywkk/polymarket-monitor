@@ -1,15 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, TrendingUp, ExternalLink } from 'lucide-react';
+import { Search, ExternalLink } from 'lucide-react';
 import { useMarkets } from '../hooks/useMarkets';
 import { Link } from 'react-router-dom';
 import { wsService } from '../services/websocket';
-
-const CATEGORIES = ['All', 'Politics', 'Crypto', 'Sports', 'Pop Culture'];
-const SORT_OPTIONS = [
-  { value: 'updated_at', label: 'Recently Updated' },
-  { value: 'endingSoon', label: 'Ending Soon' },
-  { value: 'liquidity', label: 'Most Liquid' },
-];
 
 interface StatCardProps {
   label: string;
@@ -37,7 +30,7 @@ export const MarketList = () => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [sortBy, setSortBy] = useState('updated_at');
+  const [sortBy] = useState('updated_at');
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'connecting' | 'offline'>('connecting');
 
   const { data, isLoading, error } = useMarkets({
@@ -84,10 +77,8 @@ export const MarketList = () => {
       return new Date(m.end_date) > new Date();
     });
     
-    const avgLiquidity = markets.reduce((acc, m) => {
-      // We'll add liquidity score later, for now use 0
-      return acc + 0;
-    }, 0) / markets.length || 0;
+    // Calculate average liquidity (placeholder - will use actual liquidity scores later)
+    const avgLiquidity = 0;
 
     return {
       total: data.pagination.total,

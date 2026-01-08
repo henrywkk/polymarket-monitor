@@ -37,10 +37,6 @@ export const MarketDetail = () => {
     );
   }
 
-  const getCategoryColor = (category: string) => {
-    // Not used anymore, but keeping for compatibility
-    return '';
-  };
 
   const formatEndDate = (endDate: string | null) => {
     if (!endDate) return 'No end date';

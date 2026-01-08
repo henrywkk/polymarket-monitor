@@ -367,18 +367,20 @@ router.get('/', async (req: Request, res: Response) => {
     const marketsResult = await query(marketsQuery, params);
 
     // Enrich markets with current prices from Redis
+    // For Yes/No markets, prioritize "Yes" outcome
     const marketsWithPrices = await Promise.all(
       marketsResult.rows.map(async (market: Market) => {
-        // Get first outcome for this market to fetch price
-        const outcomes = await query(
-          'SELECT token_id FROM outcomes WHERE market_id = $1 LIMIT 1',
+        // Get outcomes, prioritizing "Yes" for Yes/No markets
+        const allOutcomes = await query(
+          'SELECT id, token_id, outcome FROM outcomes WHERE market_id = $1 ORDER BY CASE WHEN LOWER(outcome) IN (\'yes\', \'true\', \'1\') THEN 0 ELSE 1 END, id LIMIT 1',
           [market.id]
         );
         
         let currentPrice = null;
-        if (outcomes.rows.length > 0) {
+        if (allOutcomes.rows.length > 0) {
+          const primaryOutcome = allOutcomes.rows[0];
           try {
-            const redisKey = `market:${market.id}:price:${outcomes.rows[0].token_id}`;
+            const redisKey = `market:${market.id}:price:${primaryOutcome.token_id}`;
             const cached = await redis.get(redisKey);
             if (cached) {
               const priceData = JSON.parse(cached);
@@ -393,24 +395,24 @@ router.get('/', async (req: Request, res: Response) => {
           } catch (error) {
             // Ignore Redis errors, fallback to database
           }
-        }
-        
-        // Fallback to database if Redis doesn't have it
-        if (!currentPrice && outcomes.rows.length > 0) {
-          const priceResult = await query(
-            `SELECT * FROM price_history 
-             WHERE market_id = $1 
-             ORDER BY timestamp DESC 
-             LIMIT 1`,
-            [market.id]
-          );
-          if (priceResult.rows.length > 0) {
-            currentPrice = {
-              bid_price: priceResult.rows[0].bid_price,
-              ask_price: priceResult.rows[0].ask_price,
-              mid_price: priceResult.rows[0].mid_price,
-              implied_probability: priceResult.rows[0].implied_probability,
-            };
+          
+          // Fallback to database if Redis doesn't have it
+          if (!currentPrice) {
+            const priceResult = await query(
+              `SELECT * FROM price_history 
+               WHERE outcome_id = $1 
+               ORDER BY timestamp DESC 
+               LIMIT 1`,
+              [primaryOutcome.id]
+            );
+            if (priceResult.rows.length > 0) {
+              currentPrice = {
+                bid_price: priceResult.rows[0].bid_price,
+                ask_price: priceResult.rows[0].ask_price,
+                mid_price: priceResult.rows[0].mid_price,
+                implied_probability: priceResult.rows[0].implied_probability,
+              };
+            }
           }
         }
 

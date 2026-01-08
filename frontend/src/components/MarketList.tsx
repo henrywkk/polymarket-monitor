@@ -87,6 +87,8 @@ export const MarketList = () => {
     };
   }, [data]);
 
+  // Get probability - for Yes/No markets, this should be the "Yes" outcome probability
+  // The backend should provide currentPrice for the primary (Yes) outcome
   const getProbability = (market: any): number => {
     if (market.currentPrice?.implied_probability !== undefined && market.currentPrice.implied_probability !== null) {
       return Number(market.currentPrice.implied_probability);

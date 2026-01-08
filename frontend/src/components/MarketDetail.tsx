@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Clock, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Clock, TrendingUp, ExternalLink } from 'lucide-react';
 import { useMarketDetail } from '../hooks/useMarketDetail';
 import { useRealtimePrice } from '../hooks/useRealtimePrice';
 import { PriceChart } from './PriceChart';
@@ -48,40 +48,70 @@ export const MarketDetail = () => {
     });
   };
 
-  const primaryOutcome = market.outcomes?.[0];
+  // For Yes/No markets, prefer the "Yes" outcome for main probability display
+  // Otherwise use the first outcome
+  const yesOutcome = market.outcomes?.find(o => 
+    o.outcome?.toLowerCase() === 'yes' || 
+    o.outcome?.toLowerCase() === 'true' ||
+    o.outcome?.toLowerCase() === '1'
+  );
+  const primaryOutcome = yesOutcome || market.outcomes?.[0];
   
   // Normalize price data - handle both PriceUpdate (camelCase) and API response (snake_case)
   let currentPrice: { bid_price: number; ask_price: number; mid_price: number; implied_probability: number } | undefined;
   
   if (priceUpdate) {
-    // Convert PriceUpdate (camelCase) to API format (snake_case)
-    currentPrice = {
-      bid_price: Number(priceUpdate.bidPrice) || 0,
-      ask_price: Number(priceUpdate.askPrice) || 0,
-      mid_price: Number(priceUpdate.midPrice) || 0,
-      implied_probability: Number(priceUpdate.impliedProbability) || 0,
-    };
-  } else {
-    // Use API response format (already snake_case), ensure all values are numbers
-    if (primaryOutcome?.currentPrice) {
+    // Only use priceUpdate if it matches the primary outcome (Yes for Yes/No markets)
+    // For now, we'll use it if available, but prefer outcome-specific prices
+    const updateMatchesOutcome = primaryOutcome && 
+      (priceUpdate.outcomeId === primaryOutcome.id || 
+       priceUpdate.outcomeId === primaryOutcome.tokenId);
+    
+    if (updateMatchesOutcome) {
       currentPrice = {
-        bid_price: Number(primaryOutcome.currentPrice.bid_price) || 0,
-        ask_price: Number(primaryOutcome.currentPrice.ask_price) || 0,
-        mid_price: Number(primaryOutcome.currentPrice.mid_price) || 0,
-        implied_probability: Number(primaryOutcome.currentPrice.implied_probability) || 0,
+        bid_price: Number(priceUpdate.bidPrice) || 0,
+        ask_price: Number(priceUpdate.askPrice) || 0,
+        mid_price: Number(priceUpdate.midPrice) || 0,
+        implied_probability: Number(priceUpdate.impliedProbability) || 0,
       };
     }
   }
+  
+  // Use API response format (already snake_case), ensure all values are numbers
+  if (!currentPrice && primaryOutcome?.currentPrice) {
+    currentPrice = {
+      bid_price: Number(primaryOutcome.currentPrice.bid_price) || 0,
+      ask_price: Number(primaryOutcome.currentPrice.ask_price) || 0,
+      mid_price: Number(primaryOutcome.currentPrice.mid_price) || 0,
+      implied_probability: Number(primaryOutcome.currentPrice.implied_probability) || 0,
+    };
+  }
+
+  // Build Polymarket URL from slug or market ID
+  const polymarketUrl = market.slug 
+    ? `https://polymarket.com/event/${market.slug}`
+    : `https://polymarket.com/event/${market.id}`;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
-      <Link
-        to="/"
-        className="inline-flex items-center text-blue-400 hover:text-blue-300 mb-6 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Markets
-      </Link>
+      <div className="flex items-center justify-between mb-6">
+        <Link
+          to="/"
+          className="inline-flex items-center text-blue-400 hover:text-blue-300 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Markets
+        </Link>
+        <a
+          href={polymarketUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white rounded-xl transition-all transform active:scale-95 border border-slate-700 hover:border-blue-500"
+        >
+          <ExternalLink className="w-4 h-4" />
+          <span className="text-sm font-bold">View on Polymarket</span>
+        </a>
+      </div>
 
       <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-8 mb-6">
         <div className="flex items-start justify-between mb-6">

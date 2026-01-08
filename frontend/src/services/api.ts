@@ -93,6 +93,8 @@ export interface Outcome {
   market_id: string;
   outcome: string;
   token_id: string;
+  volume?: number;
+  volume24h?: number;
   created_at: string;
   currentPrice?: {
     bid_price: number;

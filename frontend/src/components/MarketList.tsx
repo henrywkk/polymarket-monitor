@@ -130,6 +130,11 @@ const MarketRow = ({
         </div>
       </td>
       <td className="px-8 py-6 text-right">
+        <div className="text-slate-400 font-mono text-sm">
+          {formatVolume(market.volume)}
+        </div>
+      </td>
+      <td className="px-8 py-6 text-right">
         <div className={`${priceUpdate ? 'text-blue-400 font-bold' : 'text-slate-400'} text-xs font-mono`}>
           {formatLastTrade(lastTradeTime)}
         </div>
@@ -380,6 +385,7 @@ export const MarketList = () => {
               { id: 'activity', label: 'Activity', icon: Activity },
               { id: 'liquidity', label: 'Liquidity', icon: Server },
               { id: 'volume24h', label: '24h Vol', icon: TrendingUp },
+              { id: 'volume', label: 'Total Vol', icon: TrendingUp },
             ].map((option) => (
               <button
                 key={option.id}
@@ -441,6 +447,7 @@ export const MarketList = () => {
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Probability</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Vol (24h)</th>
+                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Total Vol</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Last Trade</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-center">Category</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Liquidity</th>

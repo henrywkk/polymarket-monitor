@@ -1,7 +1,8 @@
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Clock, TrendingUp, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Clock, TrendingUp, ExternalLink, BarChart3, PieChart } from 'lucide-react';
 import { useMarketDetail } from '../hooks/useMarketDetail';
 import { useRealtimePrice } from '../hooks/useRealtimePrice';
+import { useState, useEffect } from 'react';
 import { 
   isBinaryMarket, 
   calculateExpectedValue, 
@@ -13,6 +14,86 @@ import {
   groupOutcomesByBucket,
   getPrimaryOutcomeForBucket
 } from '../utils/outcome-grouping';
+
+// Individual Outcome Row component for real-time updates
+const OutcomeRow = ({ 
+  marketId, 
+  outcome, 
+  isPrimary, 
+  formatVolume 
+}: { 
+  marketId: string; 
+  outcome: OutcomeWithPrice; 
+  isPrimary: boolean;
+  formatVolume: (vol: number | undefined) => string;
+}) => {
+  const priceUpdate = useRealtimePrice(marketId, outcome.id);
+  const [pulse, setPulse] = useState(false);
+
+  useEffect(() => {
+    if (priceUpdate) {
+      setPulse(true);
+      const timer = setTimeout(() => setPulse(false), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [priceUpdate]);
+
+  const currentProb = priceUpdate ? Number(priceUpdate.impliedProbability) : Number(outcome.currentPrice?.implied_probability || 0);
+  const currentBid = priceUpdate ? Number(priceUpdate.bidPrice) : Number(outcome.currentPrice?.bid_price || 0);
+  const currentAsk = priceUpdate ? Number(priceUpdate.askPrice) : Number(outcome.currentPrice?.ask_price || 0);
+
+  return (
+    <div
+      className={`border rounded-xl p-4 transition-all ${
+        pulse ? 'bg-blue-500/10 border-blue-500/50' :
+        isPrimary 
+          ? 'border-blue-500/30 bg-blue-500/5' 
+          : 'border-slate-800 bg-slate-900/50'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className={`font-bold ${isPrimary ? 'text-blue-400' : 'text-white'}`}>
+                {outcome.outcome}
+              </span>
+              {isPrimary && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-bold uppercase tracking-tighter">
+                  Primary
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-4 mt-1">
+              <span className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1">
+                <PieChart className="w-3 h-3" />
+                24H: {formatVolume((outcome as any).volume24h)}
+              </span>
+              <span className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1">
+                <BarChart3 className="w-3 h-3" />
+                Total: {formatVolume((outcome as any).volume)}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="text-right">
+          {outcome.currentPrice || priceUpdate ? (
+            <>
+              <span className={`font-black text-xl transition-colors ${pulse ? 'text-blue-400' : 'text-slate-200'}`}>
+                {currentProb.toFixed(1)}%
+              </span>
+              <div className="text-[10px] text-slate-500 font-mono mt-1 font-bold">
+                BID: {currentBid.toFixed(4)} | ASK: {currentAsk.toFixed(4)}
+              </div>
+            </>
+          ) : (
+            <span className="text-slate-500 text-sm font-bold italic">No price data</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const MarketDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -274,45 +355,18 @@ export const MarketDetail = () => {
               if (bucketEntries.length > 0 && bucketEntries.length < market.outcomes.length) {
                 return bucketEntries.map(([bucketName, bucketOutcomes]) => {
                   const primaryBucketOutcome = getPrimaryOutcomeForBucket(bucketOutcomes);
-                  const isPrimary = primaryOutcome?.id === primaryBucketOutcome?.id;
+                  if (!primaryBucketOutcome) return null;
+                  
+                  const isPrimary = primaryOutcome?.id === primaryBucketOutcome.id;
                   
                   return (
-                    <div
+                    <OutcomeRow
                       key={bucketName}
-                      className={`border rounded-xl p-4 transition-all ${
-                        isPrimary 
-                          ? 'border-blue-500/50 bg-blue-500/5' 
-                          : 'border-slate-800 bg-slate-900/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className={`font-semibold ${isPrimary ? 'text-blue-400' : 'text-white'}`}>
-                            {bucketName}
-                          </span>
-                          {isPrimary && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                              Primary
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          {primaryBucketOutcome?.currentPrice ? (
-                            <>
-                              <span className="text-blue-400 font-bold text-lg">
-                                {Number(primaryBucketOutcome.currentPrice.implied_probability).toFixed(1)}%
-                              </span>
-                              <div className="text-xs text-slate-500 mt-1">
-                                Bid: {Number(primaryBucketOutcome.currentPrice.bid_price).toFixed(4)} | 
-                                Ask: {Number(primaryBucketOutcome.currentPrice.ask_price).toFixed(4)}
-                              </div>
-                            </>
-                          ) : (
-                            <span className="text-slate-500 text-sm">No price data</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                      marketId={market.id}
+                      outcome={primaryBucketOutcome as OutcomeWithPrice}
+                      isPrimary={isPrimary}
+                      formatVolume={formatVolume}
+                    />
                   );
                 });
               } else {
@@ -327,42 +381,13 @@ export const MarketDetail = () => {
                 return sortedOutcomes.map((outcome) => {
                   const isPrimary = primaryOutcome?.id === outcome.id;
                   return (
-                    <div
+                    <OutcomeRow
                       key={outcome.id}
-                      className={`border rounded-xl p-4 transition-all ${
-                        isPrimary 
-                          ? 'border-blue-500/50 bg-blue-500/5' 
-                          : 'border-slate-800 bg-slate-900/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className={`font-semibold ${isPrimary ? 'text-blue-400' : 'text-white'}`}>
-                            {outcome.outcome}
-                          </span>
-                          {isPrimary && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                              Primary
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          {outcome.currentPrice ? (
-                            <>
-                              <span className="text-blue-400 font-bold text-lg">
-                                {Number(outcome.currentPrice.implied_probability).toFixed(1)}%
-                              </span>
-                              <div className="text-xs text-slate-500 mt-1">
-                                Bid: {Number(outcome.currentPrice.bid_price).toFixed(4)} | 
-                                Ask: {Number(outcome.currentPrice.ask_price).toFixed(4)}
-                              </div>
-                            </>
-                          ) : (
-                            <span className="text-slate-500 text-sm">No price data</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                      marketId={market.id}
+                      outcome={outcome as OutcomeWithPrice}
+                      isPrimary={isPrimary}
+                      formatVolume={formatVolume}
+                    />
                   );
                 });
               }

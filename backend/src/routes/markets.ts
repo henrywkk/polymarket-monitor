@@ -562,7 +562,7 @@ router.get('/', async (req: Request, res: Response) => {
           liquidityScore: internalLiquidityScores.get(market.id) || 0, // Use our better internal score
           volume: (market as any).volume || 0,
           volume24h: (market as any).volume_24h || 0,
-          lastTradeAt: lastUpdates.get(market.id) || market.updated_at,
+          lastTradeAt: lastUpdates.get(market.id) || market.updatedAt,
         };
       })
     );

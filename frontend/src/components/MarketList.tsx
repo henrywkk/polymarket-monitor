@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, ExternalLink, Server, Wifi, Activity, Clock } from 'lucide-react';
+import { Search, ExternalLink } from 'lucide-react';
 import { useMarkets } from '../hooks/useMarkets';
 import { Link } from 'react-router-dom';
 import { wsService } from '../services/websocket';

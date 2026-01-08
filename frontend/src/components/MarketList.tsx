@@ -6,7 +6,6 @@ import { wsService } from '../services/websocket';
 import { Market } from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRealtimePrice } from '../hooks/useRealtimePrice';
-import { getPrimaryOutcome } from '../utils/market-calculations';
 
 interface StatCardProps {
   label: string;
@@ -48,9 +47,9 @@ const MarketRow = ({
   formatEndDate 
 }: MarketRowProps) => {
   // Use real-time price hook for this specific market
-  const outcomes = (market as any).outcomes || [];
-  const primaryOutcome = getPrimaryOutcome(outcomes);
-  const priceUpdate = useRealtimePrice(market.id, primaryOutcome?.id);
+  // We prioritize the outcomeId from the backend's probabilityDisplay
+  const primaryOutcomeId = (market as any).probabilityDisplay?.outcomeId;
+  const priceUpdate = useRealtimePrice(market.id, primaryOutcomeId);
 
   // Use real-time value if available, otherwise fallback to static data
   const initialProb = getProbabilityDisplay(market);

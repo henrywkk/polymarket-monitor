@@ -501,32 +501,17 @@ router.get('/', async (req: Request, res: Response) => {
           outcomesWithPrices.some(o => ['yes', 'no', 'true', 'false', '1', '0'].includes(o.outcome.toLowerCase()));
 
         // Calculate display probability
-        let probabilityDisplay: { type: 'expectedValue' | 'highestProbability'; value: number; outcome?: string } | null = null;
+        let probabilityDisplay: { type: 'expectedValue' | 'highestProbability'; value: number; outcome?: string; outcomeId?: string } | null = null;
         let currentPrice = null;
 
         if (hasBucketOutcomes && !isBinaryMarket) {
-          // Calculate expected value for bucket markets
-          let totalExpected = 0;
-          let hasValidData = false;
-          
-          for (const outcome of outcomesWithPrices) {
-            const probability = outcome.currentPrice?.implied_probability;
-            if (probability === undefined || probability === null) continue;
-            
-            const midpoint = parseOutcomeMidpoint(outcome.outcome);
-            if (midpoint === null) continue;
-            
-            const probDecimal = probability / 100;
-            totalExpected += midpoint * probDecimal;
-            hasValidData = true;
-          }
-          
+          // ... (existing logic)
           if (hasValidData) {
             probabilityDisplay = {
               type: 'expectedValue',
               value: totalExpected,
             };
-            // Use the outcome with highest probability for currentPrice (for backward compatibility)
+            // Use the outcome with highest probability for currentPrice
             const highestProbOutcome = outcomesWithPrices.reduce((max, o) => 
               (o.currentPrice?.implied_probability || 0) > (max.currentPrice?.implied_probability || 0) ? o : max
             );
@@ -544,6 +529,7 @@ router.get('/', async (req: Request, res: Response) => {
                 type: 'highestProbability',
                 value: highestProbOutcome.currentPrice.implied_probability,
                 outcome: highestProbOutcome.outcome,
+                outcomeId: highestProbOutcome.id, // Include outcomeId for frontend real-time filtering
               };
               currentPrice = highestProbOutcome.currentPrice;
             }

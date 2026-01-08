@@ -65,14 +65,21 @@ export const MarketDetail = () => {
   if (priceUpdate) {
     // Convert PriceUpdate (camelCase) to API format (snake_case)
     currentPrice = {
-      bid_price: priceUpdate.bidPrice,
-      ask_price: priceUpdate.askPrice,
-      mid_price: priceUpdate.midPrice,
-      implied_probability: priceUpdate.impliedProbability,
+      bid_price: Number(priceUpdate.bidPrice) || 0,
+      ask_price: Number(priceUpdate.askPrice) || 0,
+      mid_price: Number(priceUpdate.midPrice) || 0,
+      implied_probability: Number(priceUpdate.impliedProbability) || 0,
     };
   } else {
-    // Use API response format (already snake_case)
-    currentPrice = primaryOutcome?.currentPrice;
+    // Use API response format (already snake_case), ensure all values are numbers
+    if (primaryOutcome?.currentPrice) {
+      currentPrice = {
+        bid_price: Number(primaryOutcome.currentPrice.bid_price) || 0,
+        ask_price: Number(primaryOutcome.currentPrice.ask_price) || 0,
+        mid_price: Number(primaryOutcome.currentPrice.mid_price) || 0,
+        implied_probability: Number(primaryOutcome.currentPrice.implied_probability) || 0,
+      };
+    }
   }
 
   return (
@@ -110,8 +117,8 @@ export const MarketDetail = () => {
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-sm text-gray-600 mb-1">Implied Probability</p>
             <p className="text-3xl font-bold text-primary-600">
-              {currentPrice?.implied_probability
-                ? `${currentPrice.implied_probability.toFixed(1)}%`
+              {currentPrice?.implied_probability !== undefined && currentPrice.implied_probability !== null
+                ? `${Number(currentPrice.implied_probability).toFixed(1)}%`
                 : 'N/A'}
             </p>
           </div>
@@ -119,8 +126,8 @@ export const MarketDetail = () => {
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-sm text-gray-600 mb-1">Bid Price</p>
             <p className="text-3xl font-bold text-gray-900">
-              {currentPrice?.bid_price
-                ? currentPrice.bid_price.toFixed(4)
+              {currentPrice?.bid_price !== undefined && currentPrice.bid_price !== null
+                ? Number(currentPrice.bid_price).toFixed(4)
                 : 'N/A'}
             </p>
           </div>
@@ -128,8 +135,8 @@ export const MarketDetail = () => {
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-sm text-gray-600 mb-1">Ask Price</p>
             <p className="text-3xl font-bold text-gray-900">
-              {currentPrice?.ask_price
-                ? currentPrice.ask_price.toFixed(4)
+              {currentPrice?.ask_price !== undefined && currentPrice.ask_price !== null
+                ? Number(currentPrice.ask_price).toFixed(4)
                 : 'N/A'}
             </p>
           </div>

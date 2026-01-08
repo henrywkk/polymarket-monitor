@@ -16,23 +16,46 @@ export const useRealtimePrice = (marketId?: string) => {
   useEffect(() => {
     if (!marketId) return;
 
+    console.log('Setting up real-time price for market:', marketId);
     wsService.connect();
 
-    // Subscribe to market updates
-    wsService.emit('subscribe_market', marketId);
+    // Wait for connection before subscribing
+    const checkConnection = () => {
+      if (wsService.isConnected()) {
+        console.log('WebSocket connected, subscribing to market:', marketId);
+        wsService.emit('subscribe_market', marketId);
+      } else {
+        console.log('WebSocket not connected yet, retrying...');
+        setTimeout(checkConnection, 100);
+      }
+    };
+
+    // Try to subscribe immediately, or wait for connection
+    if (wsService.isConnected()) {
+      wsService.emit('subscribe_market', marketId);
+    } else {
+      checkConnection();
+    }
 
     const handlePriceUpdate = (data: unknown) => {
+      console.log('Received price update:', data);
       const update = data as PriceUpdate;
       if (update.marketId === marketId) {
+        console.log('Price update matches market, updating state');
         setPriceUpdate(update);
+      } else {
+        console.log('Price update for different market:', update.marketId, 'expected:', marketId);
       }
     };
 
     wsService.on('price_update', handlePriceUpdate);
 
     return () => {
+      console.log('Cleaning up real-time price for market:', marketId);
       wsService.off('price_update', handlePriceUpdate);
-      wsService.emit('unsubscribe_market', marketId);
+      if (wsService.isConnected()) {
+        wsService.emit('unsubscribe_market', marketId);
+      }
     };
   }, [marketId]);
 

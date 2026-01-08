@@ -41,8 +41,13 @@ class WebSocketService {
     });
 
     this.socket.on('connect', () => {
-      console.log('WebSocket connected');
+      console.log('WebSocket connected', this.socket?.id);
       this.reconnectAttempts = 0;
+    });
+
+    // Log all events for debugging
+    this.socket.onAny((event, ...args) => {
+      console.log('WebSocket event:', event, args);
     });
 
     this.socket.on('disconnect', () => {

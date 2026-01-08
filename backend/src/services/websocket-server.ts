@@ -64,9 +64,12 @@ export class WebSocketServer {
     });
   }
 
-  broadcastPriceUpdate(event: PolymarketPriceEvent): void {
+  broadcastPriceUpdate(event: PolymarketPriceEvent, databaseMarketId?: string): void {
+    // Use database market ID if provided, otherwise fall back to event.market
+    const marketId = databaseMarketId || event.market;
+    
     const update = {
-      marketId: event.market,
+      marketId: marketId,
       outcomeId: event.outcome,
       bidPrice: event.price.bid,
       askPrice: event.price.ask,
@@ -75,8 +78,9 @@ export class WebSocketServer {
       timestamp: new Date().toISOString(),
     };
 
-    // Broadcast to all clients subscribed to this market
-    this.io.to(`market:${event.market}`).emit('price_update', update);
+    // Broadcast to all clients subscribed to this market (using database market ID)
+    console.log(`Broadcasting price update to market:${marketId}`, update);
+    this.io.to(`market:${marketId}`).emit('price_update', update);
   }
 
   getIO(): SocketIOServer {

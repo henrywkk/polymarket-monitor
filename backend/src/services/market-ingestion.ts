@@ -188,9 +188,10 @@ export class MarketIngestionService {
       }
       this.activeMarkets.get(marketId)!.add(outcome.id);
 
-      // Broadcast to connected clients
+      // Broadcast to connected clients (use database market ID, not Polymarket market ID)
       if (this.wsServer) {
-        this.wsServer.broadcastPriceUpdate(event);
+        console.log(`Broadcasting price update for market ${marketId} (from database)`);
+        this.wsServer.broadcastPriceUpdate(event, marketId);
       }
 
       // Invalidate cache for this market

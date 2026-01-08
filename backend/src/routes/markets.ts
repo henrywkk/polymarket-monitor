@@ -473,9 +473,10 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     const market = marketResult.rows[0] as Market;
 
-    // Get outcomes
+    // Get outcomes - prioritize "Yes" outcome for Yes/No markets
     const outcomesResult = await query(
-      'SELECT * FROM outcomes WHERE market_id = $1',
+      `SELECT * FROM outcomes WHERE market_id = $1 
+       ORDER BY CASE WHEN LOWER(outcome) IN ('yes', 'true', '1') THEN 0 ELSE 1 END, id`,
       [id]
     );
 

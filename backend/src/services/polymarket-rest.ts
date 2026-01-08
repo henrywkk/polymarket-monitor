@@ -70,7 +70,14 @@ export interface PolymarketMarket {
   liquidity?: string;
   volume?: string;
   volume24h?: string;
+  markets?: any[]; // For multi-outcome events
   [key: string]: any;
+}
+
+export interface MarketToken {
+  token_id: string;
+  outcome: string;
+  price?: number;
 }
 
 export interface PolymarketMarketsResponse {
@@ -296,7 +303,7 @@ export class PolymarketRestClient {
    * 
    * Note: For Gamma API events, the "id" field is often the condition_id
    */
-  async fetchMarketTokens(id: string): Promise<Array<{ token_id: string; outcome: string; price?: number }>> {
+  async fetchMarketTokens(id: string): Promise<MarketToken[]> {
     try {
       console.log(`[Sync] Fetching tokens for ID: ${id}`);
       
@@ -336,7 +343,7 @@ export class PolymarketRestClient {
             });
           }
           
-          const result = tokens.map((t: any, idx: number) => {
+          const result: MarketToken[] = tokens.map((t: any, idx: number) => {
             // Try to get price from various fields
             let price: number | undefined = undefined;
             const rawPrice = t.price || (data.outcomePrices && data.outcomePrices[idx]) || data.lastTradePrice;
@@ -377,7 +384,7 @@ export class PolymarketRestClient {
           });
           
           // For multi-outcome markets, collect all sub-markets with their bucket names
-          const allTokens: Array<{ token_id: string; outcome: string }> = [];
+          const allTokens: MarketToken[] = [];
           
           for (const subMarket of data.markets) {
             // Get bucket name from groupItemTitle (e.g., "<0.5%", "0.5-1.0%", ">2.5%")
@@ -446,12 +453,13 @@ export class PolymarketRestClient {
             // If we got tokens, map them to bucket names
             if (tokens.length > 0 && data.markets.length > 0) {
               // Map tokens to their corresponding bucket
-              const tokensWithBuckets = tokens.map((token, idx) => {
+              const tokensWithBuckets: MarketToken[] = tokens.map((token, idx) => {
                 const marketIdx = Math.floor(idx / 2); // Assuming 2 tokens per market (Yes/No)
                 const bucketName = data.markets[marketIdx]?.groupItemTitle || token.outcome;
                 return {
                   token_id: token.token_id,
                   outcome: bucketName,
+                  price: token.price,
                 };
               });
               return tokensWithBuckets;

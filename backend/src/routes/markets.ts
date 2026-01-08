@@ -485,14 +485,14 @@ router.get('/', async (req: Request, res: Response) => {
             }
           }
           
-          if (currentPrice) {
-            outcomesWithPrices.push({
-              id: outcome.id,
-              token_id: outcome.token_id,
-              outcome: outcome.outcome,
-              currentPrice,
-            });
-          }
+          // Always include the outcome, even if it doesn't have a price yet
+          // This ensures we can display outcome names for discrete markets
+          outcomesWithPrices.push({
+            id: outcome.id,
+            token_id: outcome.token_id,
+            outcome: outcome.outcome,
+            currentPrice, // Will be null if no price found
+          });
         }
 
         // Determine if this is a bucket market (continuous outcomes)
@@ -535,11 +535,12 @@ router.get('/', async (req: Request, res: Response) => {
         } else {
           // For discrete markets, find highest probability outcome
           if (outcomesWithPrices.length > 0) {
-            // Filter outcomes that actually have a name and price
-            const validOutcomes = outcomesWithPrices.filter(o => o.outcome && o.currentPrice);
+            // Filter outcomes that have prices (prefer these)
+            const outcomesWithPricesOnly = outcomesWithPrices.filter(o => o.outcome && o.currentPrice);
             
-            if (validOutcomes.length > 0) {
-              const highestProbOutcome = validOutcomes.reduce((max, o) => 
+            if (outcomesWithPricesOnly.length > 0) {
+              // Use outcomes with prices to find the highest probability
+              const highestProbOutcome = outcomesWithPricesOnly.reduce((max, o) => 
                 (o.currentPrice?.implied_probability || 0) > (max.currentPrice?.implied_probability || 0) ? o : max
               );
               
@@ -552,16 +553,19 @@ router.get('/', async (req: Request, res: Response) => {
                 };
                 currentPrice = highestProbOutcome.currentPrice;
               }
-            } else if (outcomesWithPrices.length > 0) {
-              // Fallback if no valid outcomes with prices, use the first one just for a name
-              const firstOutcome = outcomesWithPrices[0];
-              probabilityDisplay = {
-                type: 'highestProbability',
-                value: firstOutcome.currentPrice?.implied_probability || 50,
-                outcome: firstOutcome.outcome,
-                outcomeId: firstOutcome.id,
-              };
-              currentPrice = firstOutcome.currentPrice;
+            } else {
+              // No outcomes have prices yet, but we still want to show the outcome name
+              // Use the first outcome with a name (even without price)
+              const firstOutcomeWithName = outcomesWithPrices.find(o => o.outcome);
+              if (firstOutcomeWithName) {
+                probabilityDisplay = {
+                  type: 'highestProbability',
+                  value: 50, // Default probability until we get real data
+                  outcome: firstOutcomeWithName.outcome,
+                  outcomeId: firstOutcomeWithName.id,
+                };
+                // Don't set currentPrice if we don't have one
+              }
             }
           }
         }

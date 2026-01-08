@@ -83,6 +83,8 @@ export interface Market {
     outcome?: string;
   };
   liquidityScore?: number;
+  volume?: number;
+  volume24h?: number;
 }
 
 export interface Outcome {

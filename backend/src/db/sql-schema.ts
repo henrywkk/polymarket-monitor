@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS markets (
     category VARCHAR(100) NOT NULL,
     end_date TIMESTAMP,
     image_url TEXT,
+    volume DECIMAL(20, 8) DEFAULT 0,
+    volume_24h DECIMAL(20, 8) DEFAULT 0,
+    liquidity DECIMAL(20, 8) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -16,7 +19,7 @@ CREATE TABLE IF NOT EXISTS markets (
 CREATE TABLE IF NOT EXISTS outcomes (
     id VARCHAR(255) PRIMARY KEY,
     market_id VARCHAR(255) NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
-    outcome VARCHAR(50) NOT NULL,
+    outcome VARCHAR(255) NOT NULL, -- Increased length for bucket names
     token_id VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(market_id, outcome)
@@ -35,13 +38,27 @@ CREATE TABLE IF NOT EXISTS price_history (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create market_stats_history table for alerts (volume spikes, etc.)
+CREATE TABLE IF NOT EXISTS market_stats_history (
+    id SERIAL PRIMARY KEY,
+    market_id VARCHAR(255) NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    volume DECIMAL(20, 8),
+    volume_24h DECIMAL(20, 8),
+    liquidity DECIMAL(20, 8),
+    avg_price DECIMAL(10, 8),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_markets_category ON markets(category);
 CREATE INDEX IF NOT EXISTS idx_markets_end_date ON markets(end_date);
+CREATE INDEX IF NOT EXISTS idx_markets_volume_24h ON markets(volume_24h DESC);
 CREATE INDEX IF NOT EXISTS idx_outcomes_market_id ON outcomes(market_id);
 CREATE INDEX IF NOT EXISTS idx_price_history_market_id ON price_history(market_id);
 CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);
 CREATE INDEX IF NOT EXISTS idx_price_history_market_timestamp ON price_history(market_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_market_stats_history_market_timestamp ON market_stats_history(market_id, timestamp DESC);
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

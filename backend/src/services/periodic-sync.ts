@@ -82,6 +82,12 @@ export class PeriodicSyncService {
       this.stats.lastSyncCount = synced;
       this.stats.totalSyncs++;
 
+      // Run statistics snapshots every 3 cycles (approx every 15 mins if interval is 5 mins)
+      if (this.stats.totalSyncs % 3 === 0) {
+        console.log('[Periodic Sync] Taking market stats snapshot...');
+        await this.syncService.ingestionService.takeStatsSnapshot();
+      }
+
       // Run maintenance tasks (like pruning) every 6 hours
       // Assuming 5-minute interval, 72 syncs = 6 hours
       if (this.stats.totalSyncs % 72 === 0) {

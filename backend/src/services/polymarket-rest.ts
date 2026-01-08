@@ -43,7 +43,7 @@ export interface PolymarketMarketRaw {
   tags?: string[];
   liquidity?: string;
   volume?: string;
-  // Additional fields
+  volume24h?: string;
   [key: string]: any;
 }
 
@@ -69,6 +69,7 @@ export interface PolymarketMarket {
   tags?: string[];
   liquidity?: string;
   volume?: string;
+  volume24h?: string;
   [key: string]: any;
 }
 
@@ -113,6 +114,7 @@ function normalizeMarket(raw: PolymarketMarketRaw): PolymarketMarket {
     tags: raw.tags,
     liquidity: raw.liquidity,
     volume: raw.volume,
+    volume24h: raw.volume24hr || raw.volume24h || raw['24hr_volume'] || undefined,
   };
 }
 

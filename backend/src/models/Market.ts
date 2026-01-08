@@ -5,6 +5,9 @@ export interface Market {
   category: string;
   endDate: Date | null;
   imageUrl: string | null;
+  volume: number;
+  volume24h: number;
+  liquidity: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -13,6 +16,8 @@ export interface MarketWithOutcomes extends Market {
   outcomes?: Outcome[];
   currentPrice?: PriceData;
   liquidityScore?: number; // 0-100 liquidity score
+  volume?: number;
+  volume24h?: number;
 }
 
 export interface Outcome {

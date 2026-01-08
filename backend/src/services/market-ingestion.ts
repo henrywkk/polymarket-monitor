@@ -49,8 +49,8 @@ export class MarketIngestionService {
   async upsertMarket(market: Omit<Market, 'createdAt' | 'updatedAt'>): Promise<void> {
     try {
       await query(
-        `INSERT INTO markets (id, question, slug, category, end_date, image_url)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO markets (id, question, slug, category, end_date, image_url, volume, volume_24h, liquidity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (id) 
          DO UPDATE SET 
            question = EXCLUDED.question,
@@ -58,6 +58,9 @@ export class MarketIngestionService {
            category = EXCLUDED.category,
            end_date = EXCLUDED.end_date,
            image_url = EXCLUDED.image_url,
+           volume = EXCLUDED.volume,
+           volume_24h = EXCLUDED.volume_24h,
+           liquidity = EXCLUDED.liquidity,
            updated_at = CURRENT_TIMESTAMP`,
         [
           market.id,
@@ -66,12 +69,51 @@ export class MarketIngestionService {
           market.category,
           market.endDate,
           market.imageUrl,
+          market.volume || 0,
+          market.volume24h || 0,
+          market.liquidity || 0,
         ]
       );
       // Removed verbose logging to reduce Railway log rate limit
     } catch (error) {
       console.error(`Error upserting market ${market.id}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Take a snapshot of market statistics (volume, liquidity, price)
+   * This is used for alert detection (e.g., volume spikes)
+   */
+  async takeStatsSnapshot(): Promise<number> {
+    try {
+      console.log('[Stats] Taking snapshots of market statistics...');
+      
+      // We'll take snapshots of all markets that have recent price activity
+      // or at least have some volume
+      const result = await query(`
+        INSERT INTO market_stats_history (market_id, volume, volume_24h, liquidity, avg_price)
+        SELECT 
+          m.id, 
+          m.volume, 
+          m.volume_24h, 
+          m.liquidity,
+          (
+            SELECT AVG(mid_price) 
+            FROM price_history ph 
+            WHERE ph.market_id = m.id 
+            AND ph.timestamp >= NOW() - INTERVAL '1 hour'
+          ) as avg_price
+        FROM markets m
+        WHERE m.volume > 0 OR m.volume_24h > 0
+      `);
+
+      const snapshotCount = result.rowCount || 0;
+      console.log(`[Stats] Successfully took ${snapshotCount} market stats snapshots.`);
+      return snapshotCount;
+    } catch (error) {
+      console.error('[Stats] Error taking market stats snapshots:', error);
+      return 0;
     }
   }
 

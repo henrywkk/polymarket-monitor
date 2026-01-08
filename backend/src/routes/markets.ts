@@ -326,9 +326,9 @@ router.get('/', async (req: Request, res: Response) => {
 
     let orderBy = 'ORDER BY updated_at DESC';
     if (sortBy === 'liquidity') {
-      // Calculate liquidity scores and sort by them
-      // We'll use a subquery to calculate liquidity based on recent price activity
-      orderBy = `ORDER BY (
+      // Use the stored liquidity score first, but fallback to dynamic calculation for sorting
+      // This ensures we always have a sort order even if snapshots haven't run
+      orderBy = `ORDER BY liquidity DESC, (
         SELECT COALESCE(
           (
             LEAST(COUNT(*)::numeric / 100 * 40, 40) + -- Frequency score
@@ -347,6 +347,10 @@ router.get('/', async (req: Request, res: Response) => {
         WHERE market_id = markets.id
           AND timestamp >= NOW() - INTERVAL '24 hours'
       ) DESC NULLS LAST, updated_at DESC`;
+    } else if (sortBy === 'volume') {
+      orderBy = 'ORDER BY volume DESC NULLS LAST';
+    } else if (sortBy === 'volume24h') {
+      orderBy = 'ORDER BY volume_24h DESC NULLS LAST';
     } else if (sortBy === 'endingSoon') {
       orderBy = 'ORDER BY end_date ASC NULLS LAST';
     }
@@ -541,7 +545,9 @@ router.get('/', async (req: Request, res: Response) => {
           ...market,
           currentPrice,
           probabilityDisplay,
-          liquidityScore: liquidityScores.get(market.id) || 0,
+          liquidityScore: market.liquidity || 0, // Use stored score
+          volume: market.volume || 0,
+          volume24h: market.volume_24h || 0,
         };
       })
     );
@@ -660,7 +666,9 @@ router.get('/:id', async (req: Request, res: Response) => {
     const marketWithOutcomes: MarketWithOutcomes = {
       ...market,
       outcomes: outcomesWithPrices,
-      liquidityScore, // Add liquidity score to response
+      liquidityScore: market.liquidity || 0,
+      volume: market.volume || 0,
+      volume24h: market.volume_24h || 0,
     };
 
     // Cache the result

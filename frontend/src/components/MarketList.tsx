@@ -92,25 +92,25 @@ export const MarketList = () => {
       return new Date(m.end_date) > new Date();
     });
     
-    // Calculate average liquidity from markets that have liquidityScore
-    const marketsWithLiquidity = markets.filter(m => 
-      (m as any).liquidityScore !== undefined && (m as any).liquidityScore !== null
+    // Calculate average volume from markets
+    const totalVolume = markets.reduce((sum, m) => 
+      sum + (m.volume24h || 0), 0
     );
-    
-    let avgLiquidity = 0;
-    if (marketsWithLiquidity.length > 0) {
-      const totalLiquidity = marketsWithLiquidity.reduce((sum, m) => 
-        sum + ((m as any).liquidityScore || 0), 0
-      );
-      avgLiquidity = totalLiquidity / marketsWithLiquidity.length;
-    }
+    const avgVolume = markets.length > 0 ? totalVolume / markets.length : 0;
 
     return {
       total: data.pagination.total, // Total markets in database
       active: activeMarkets.length, // Active markets in current page (limited)
-      avgLiquidity: Math.round(avgLiquidity),
+      avgVolume,
     };
   }, [data]);
+
+  const formatVolume = (volume: number | undefined) => {
+    if (volume === undefined || volume === null) return 'N/A';
+    if (volume >= 1000000) return `$${(volume / 1000000).toFixed(1)}M`;
+    if (volume >= 1000) return `$${(volume / 1000).toFixed(1)}K`;
+    return `$${Number(volume).toFixed(0)}`;
+  };
 
   // Get probability display - uses probabilityDisplay from backend if available
   const getProbabilityDisplay = (market: any): { value: number; label: string; outcome?: string } => {
@@ -225,7 +225,7 @@ export const MarketList = () => {
         <StatCard label="Live Markets" value={stats.total} color="blue" />
         <StatCard label="Active Markets" value={stats.active} color="green" />
         <StatCard label="Category" value={category !== 'All' ? category : 'All'} color="purple" />
-        <StatCard label="Avg Liquidity" value={`${stats.avgLiquidity}%`} color="slate" />
+        <StatCard label="Avg Vol (24h)" value={formatVolume(stats.avgVolume)} color="slate" />
       </div>
 
       {/* Search Bar */}
@@ -259,8 +259,9 @@ export const MarketList = () => {
                   <tr className="border-b border-slate-800 bg-slate-900/30">
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Probability</th>
-                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-center">Category</th>
+                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Vol (24h)</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Liquidity</th>
+                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-center">Category</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Status</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Action</th>
                   </tr>
@@ -303,6 +304,11 @@ export const MarketList = () => {
                                 Expected
                               </div>
                             )}
+                          </div>
+                        </td>
+                        <td className="px-8 py-6 text-right">
+                          <div className="text-slate-300 font-mono font-bold">
+                            {formatVolume(market.volume24h)}
                           </div>
                         </td>
                         <td className="px-8 py-6 text-center">

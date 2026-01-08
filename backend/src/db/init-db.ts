@@ -108,6 +108,18 @@ export async function initializeDatabase(): Promise<void> {
     // Log summary instead of individual statements
     console.log(`Database initialization: ${successCount} succeeded, ${skippedCount} skipped, ${errorCount} errors`);
     
+    // Run migrations (add columns to existing tables)
+    try {
+      console.log('Running migrations...');
+      await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS volume DECIMAL(20, 8) DEFAULT 0');
+      await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS volume_24h DECIMAL(20, 8) DEFAULT 0');
+      await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS liquidity DECIMAL(20, 8) DEFAULT 0');
+      await query('ALTER TABLE outcomes ALTER COLUMN outcome TYPE VARCHAR(255)');
+      console.log('Migrations completed successfully.');
+    } catch (migrationError) {
+      console.error('Error running migrations:', migrationError);
+    }
+
     // Verify tables were created
     const tablesCheck = await query(`
       SELECT table_name 

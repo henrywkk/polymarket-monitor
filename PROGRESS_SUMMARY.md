@@ -205,6 +205,7 @@ React Components → Display with real-time updates
 4. ✅ **Smart Sync**: Only updates changed markets (massive efficiency gain)
 5. ✅ **Liquidity Calculation**: Real-time liquidity scores for all markets
 6. ✅ **Expected Value**: Accurate calculation for continuous outcome markets
+7. ✅ **Volume Tracking**: 24h and Total volume storage with periodic snapshots
 
 ### Frontend
 1. ✅ **Probability Display**: Context-aware (Expected Value vs Probability)
@@ -213,6 +214,7 @@ React Components → Display with real-time updates
 4. ✅ **Real-time Updates**: Live price updates via WebSocket
 5. ✅ **Health Monitoring**: Footer bar with WebSocket and API status
 6. ✅ **External Links**: Direct links to Polymarket events
+7. ✅ **Volume Display**: Added 24H volume column to table and stats cards
 
 ---
 

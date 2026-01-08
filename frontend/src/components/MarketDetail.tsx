@@ -57,16 +57,23 @@ export const MarketDetail = () => {
   }
 
 
-  const formatEndDate = (endDate: string | null) => {
-    if (!endDate) return 'No end date';
-    const date = new Date(endDate);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-  
+      const formatEndDate = (endDate: string | null) => {
+        if (!endDate) return 'No end date';
+        const date = new Date(endDate);
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+      };
+      
+      const formatVolume = (volume: number | undefined) => {
+        if (volume === undefined || volume === null) return 'N/A';
+        if (volume >= 1000000) return `$${(volume / 1000000).toFixed(1)}M`;
+        if (volume >= 1000) return `$${(volume / 1000).toFixed(1)}K`;
+        return `$${Number(volume).toFixed(0)}`;
+      };
+
   // Normalize price data - handle both PriceUpdate (camelCase) and API response (snake_case)
   let currentPrice: { bid_price: number; ask_price: number; mid_price: number; implied_probability: number } | undefined;
   
@@ -208,9 +215,30 @@ export const MarketDetail = () => {
             </>
           )}
 
-        </div>
+            </div>
 
-        <div className="flex items-center text-slate-400">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">24H Volume</p>
+                <p className="text-3xl font-black text-white">
+                  {formatVolume((market as any).volume24h)}
+                </p>
+              </div>
+              <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Total Volume</p>
+                <p className="text-3xl font-black text-white">
+                  {formatVolume((market as any).volume)}
+                </p>
+              </div>
+              <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Liquidity Score</p>
+                <p className="text-3xl font-black text-blue-400">
+                  {((market as any).liquidityScore || 0).toFixed(1)}%
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center text-slate-400">
           <Clock className="w-4 h-4 mr-2" />
           <span className="text-sm font-medium">End Date: {formatEndDate(market.end_date)}</span>
         </div>

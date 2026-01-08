@@ -490,7 +490,14 @@ router.get('/:id', async (req: Request, res: Response) => {
       try {
         const cachedPrice = await redis.get(redisKey);
         if (cachedPrice) {
-          currentPrice = JSON.parse(cachedPrice);
+          const priceData = JSON.parse(cachedPrice);
+          // Normalize Redis price format to match database format
+          currentPrice = {
+            bid_price: priceData.bid || priceData.bid_price,
+            ask_price: priceData.ask || priceData.ask_price,
+            mid_price: priceData.mid || priceData.mid_price,
+            implied_probability: priceData.probability || priceData.implied_probability,
+          };
         }
       } catch (error) {
         // Redis lookup failed, fallback to database
@@ -506,7 +513,13 @@ router.get('/:id', async (req: Request, res: Response) => {
           [outcome.id]
         );
         if (priceResult.rows.length > 0) {
-          currentPrice = priceResult.rows[0];
+          const priceRow = priceResult.rows[0];
+          currentPrice = {
+            bid_price: priceRow.bid_price,
+            ask_price: priceRow.ask_price,
+            mid_price: priceRow.mid_price,
+            implied_probability: priceRow.implied_probability,
+          };
         }
       }
       

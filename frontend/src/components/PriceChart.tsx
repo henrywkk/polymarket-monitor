@@ -35,16 +35,22 @@ export const PriceChart = ({ marketId }: PriceChartProps) => {
     );
   }
 
-  // Transform data for chart
-  const chartData = data.data.map((item) => ({
-    time: new Date(item.timestamp).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
-    probability: parseFloat(item.implied_probability.toFixed(2)),
-    bid: parseFloat(item.bid_price.toFixed(4)),
-    ask: parseFloat(item.ask_price.toFixed(4)),
-  }));
+  // Transform data for chart - ensure all values are numbers
+  const chartData = data.data.map((item) => {
+    const impliedProb = Number(item.implied_probability) || 0;
+    const bidPrice = Number(item.bid_price) || 0;
+    const askPrice = Number(item.ask_price) || 0;
+    
+    return {
+      time: new Date(item.timestamp).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      probability: parseFloat(impliedProb.toFixed(2)),
+      bid: parseFloat(bidPrice.toFixed(4)),
+      ask: parseFloat(askPrice.toFixed(4)),
+    };
+  });
 
   return (
     <div>

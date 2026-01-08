@@ -505,7 +505,22 @@ router.get('/', async (req: Request, res: Response) => {
         let currentPrice = null;
 
         if (hasBucketOutcomes && !isBinaryMarket) {
-          // ... (existing logic)
+          // Calculate expected value for bucket markets
+          let totalExpected = 0;
+          let hasValidData = false;
+          
+          for (const outcome of outcomesWithPrices) {
+            const probability = outcome.currentPrice?.implied_probability;
+            if (probability === undefined || probability === null) continue;
+            
+            const midpoint = parseOutcomeMidpoint(outcome.outcome);
+            if (midpoint === null) continue;
+            
+            const probDecimal = probability / 100;
+            totalExpected += midpoint * probDecimal;
+            hasValidData = true;
+          }
+          
           if (hasValidData) {
             probabilityDisplay = {
               type: 'expectedValue',

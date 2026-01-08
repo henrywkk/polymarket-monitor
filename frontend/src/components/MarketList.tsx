@@ -30,7 +30,7 @@ export const MarketList = () => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [sortBy] = useState('updated_at');
+  const [sortBy] = useState('liquidity'); // Sort by liquidity score by default
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'connecting' | 'offline'>('connecting');
 
   const { data, isLoading, error } = useMarkets({
@@ -192,19 +192,8 @@ export const MarketList = () => {
             <h1 className="text-4xl font-black tracking-tight text-white">
               PolyMonitor<span className="text-blue-500">PRO</span>
             </h1>
-            <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${
-              connectionStatus === 'online' 
-                ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                : connectionStatus === 'connecting'
-                ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
-                : 'bg-red-500/10 text-red-400 border-red-500/20'
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                connectionStatus === 'online' ? 'bg-green-500' 
-                : connectionStatus === 'connecting' ? 'bg-orange-500'
-                : 'bg-red-500'
-              } animate-pulse`}></span>
-              {connectionStatus}
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border bg-purple-500/10 text-purple-400 border-purple-500/20">
+              BETA
             </div>
           </div>
           <p className="text-slate-400 text-lg">Institutional-grade prediction market monitoring.</p>
@@ -271,6 +260,7 @@ export const MarketList = () => {
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Probability</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-center">Category</th>
+                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Liquidity</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Status</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Action</th>
                   </tr>
@@ -321,17 +311,28 @@ export const MarketList = () => {
                           </span>
                         </td>
                         <td className="px-8 py-6 text-right">
+                          <div className="text-slate-300 text-sm font-mono font-semibold">
+                            {market.liquidityScore !== undefined && market.liquidityScore !== null
+                              ? `${Number(market.liquidityScore).toFixed(1)}%`
+                              : 'N/A'}
+                          </div>
+                        </td>
+                        <td className="px-8 py-6 text-right">
                           <div className="text-slate-400 text-sm font-mono">
                             {formatEndDate(market.end_date)}
                           </div>
                         </td>
                         <td className="px-8 py-6 text-right">
-                          <Link
-                            to={`/markets/${market.id}`}
+                          <a
+                            href={market.slug 
+                              ? `https://polymarket.com/event/${market.slug}`
+                              : `https://polymarket.com/event/${market.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white transition-all transform active:scale-95"
                           >
                             <ExternalLink className="w-5 h-5" />
-                          </Link>
+                          </a>
                         </td>
                       </tr>
                     );
@@ -373,6 +374,52 @@ export const MarketList = () => {
           )}
         </>
       )}
+
+      {/* Footer with health status */}
+      <div className="fixed bottom-0 left-0 right-0 bg-[#121826] border-t border-slate-800/60 shadow-2xl z-50">
+        <div className="max-w-7xl mx-auto px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 uppercase tracking-widest font-bold">WebSocket:</span>
+                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase border ${
+                  connectionStatus === 'online' 
+                    ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                    : connectionStatus === 'connecting'
+                    ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                    : 'bg-red-500/10 text-red-400 border-red-500/20'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    connectionStatus === 'online' ? 'bg-green-500' 
+                    : connectionStatus === 'connecting' ? 'bg-orange-500'
+                    : 'bg-red-500'
+                  } animate-pulse`}></span>
+                  {connectionStatus}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 uppercase tracking-widest font-bold">API:</span>
+                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase border ${
+                  !error && data
+                    ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                    : 'bg-red-500/10 text-red-400 border-red-500/20'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    !error && data ? 'bg-green-500' : 'bg-red-500'
+                  }`}></span>
+                  {!error && data ? 'healthy' : 'error'}
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-slate-500">
+              PolyMonitorPRO © 2025
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Add padding to bottom to account for fixed footer */}
+      <div className="h-16"></div>
     </div>
   );
 };

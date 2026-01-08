@@ -171,7 +171,9 @@ export function calculateExpectedValue(outcomes: OutcomeWithPrice[]): number | n
 }
 
 /**
- * Get the primary outcome for display (Yes for binary, first for others)
+ * Get the primary outcome for display
+ * - For binary markets: "Yes" outcome
+ * - For multi-outcome markets: outcome with highest probability (most likely outcome)
  */
 export function getPrimaryOutcome(outcomes: OutcomeWithPrice[]): OutcomeWithPrice | null {
   if (!outcomes || outcomes.length === 0) return null;
@@ -185,6 +187,19 @@ export function getPrimaryOutcome(outcomes: OutcomeWithPrice[]): OutcomeWithPric
     return yesOutcome || outcomes[0];
   }
   
-  // For multi-outcome markets, return first outcome
-  return outcomes[0];
+  // For multi-outcome markets, return the outcome with the highest probability
+  // This is the most likely outcome and most relevant to display
+  let highestProb = -1;
+  let primaryOutcome: OutcomeWithPrice | null = null;
+  
+  for (const outcome of outcomes) {
+    const probability = outcome.currentPrice?.implied_probability;
+    if (probability !== undefined && probability !== null && probability > highestProb) {
+      highestProb = probability;
+      primaryOutcome = outcome;
+    }
+  }
+  
+  // Fallback to first outcome if no outcomes have price data
+  return primaryOutcome || outcomes[0];
 }

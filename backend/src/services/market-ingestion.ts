@@ -77,19 +77,42 @@ export class MarketIngestionService {
 
   /**
    * Store or update outcome in database
+   * Handles conflicts on primary key (id/token_id) to allow updating outcome names
+   * from "Yes"/"No" to bucket names like "<0.5%"
    */
   async upsertOutcome(outcome: Omit<Outcome, 'createdAt'>): Promise<void> {
     try {
+      // Handle conflict on primary key (id/token_id)
+      // This allows us to update outcome names when the same token_id exists
+      // with a different outcome name (e.g., "Yes" -> "<0.5%")
       await query(
         `INSERT INTO outcomes (id, market_id, outcome, token_id)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (market_id, outcome) 
-         DO UPDATE SET token_id = EXCLUDED.token_id`,
+         ON CONFLICT (id) 
+         DO UPDATE SET 
+           market_id = EXCLUDED.market_id,
+           outcome = EXCLUDED.outcome,
+           token_id = EXCLUDED.token_id`,
         [outcome.id, outcome.marketId, outcome.outcome, outcome.tokenId]
       );
     } catch (error) {
-      console.error(`Error upserting outcome ${outcome.id}:`, error);
-      throw error;
+      // If conflict on (market_id, outcome) unique constraint, try to update by that
+      if ((error as any).code === '23505' && (error as any).constraint === 'outcomes_market_id_outcome_key') {
+        try {
+          await query(
+            `UPDATE outcomes 
+             SET id = $1, token_id = $4
+             WHERE market_id = $2 AND outcome = $3`,
+            [outcome.id, outcome.marketId, outcome.outcome, outcome.tokenId]
+          );
+        } catch (updateError) {
+          console.error(`Error updating outcome ${outcome.id} by (market_id, outcome):`, updateError);
+          throw updateError;
+        }
+      } else {
+        console.error(`Error upserting outcome ${outcome.id}:`, error);
+        throw error;
+      }
     }
   }
 

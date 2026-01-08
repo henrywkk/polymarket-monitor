@@ -163,7 +163,7 @@ export class MarketIngestionService {
   /**
    * Handle price change events from WebSocket
    */
-  private async handlePriceEvent(event: PolymarketPriceEvent): Promise<void> {
+  public async handlePriceEvent(event: PolymarketPriceEvent): Promise<void> {
     try {
       let { market: marketId, outcome: outcomeId, price } = event;
       

@@ -592,13 +592,14 @@ export class MarketSyncService {
             // We'll use the price as mid, and set tiny spread for initial data
             // Implied probability is price * 100
             await this.ingestionService.handlePriceEvent({
-              marketId: marketId,
-              outcomeId: outcomeId,
-              bidPrice: price * 0.99,
-              askPrice: price * 1.01,
-              midPrice: price,
-              impliedProbability: price * 100,
-              timestamp: new Date().toISOString()
+              type: 'price_changed',
+              market: marketId,
+              outcome: outcomeId,
+              price: {
+                bid: price * 0.99,
+                ask: price * 1.01
+              },
+              timestamp: Date.now()
             });
           }
         }

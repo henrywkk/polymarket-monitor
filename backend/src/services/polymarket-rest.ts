@@ -296,7 +296,7 @@ export class PolymarketRestClient {
    * 
    * Note: For Gamma API events, the "id" field is often the condition_id
    */
-  async fetchMarketTokens(id: string): Promise<Array<{ token_id: string; outcome: string }>> {
+  async fetchMarketTokens(id: string): Promise<Array<{ token_id: string; outcome: string; price?: number }>> {
     try {
       console.log(`[Sync] Fetching tokens for ID: ${id}`);
       

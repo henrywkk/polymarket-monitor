@@ -10,13 +10,13 @@ export interface PriceUpdate {
   impliedProbability: number;
 }
 
-export const useRealtimePrice = (marketId?: string) => {
+export const useRealtimePrice = (marketId?: string, primaryOutcomeId?: string) => {
   const [priceUpdate, setPriceUpdate] = useState<PriceUpdate | null>(null);
 
   useEffect(() => {
     if (!marketId) return;
 
-    console.log('Setting up real-time price for market:', marketId);
+    console.log('Setting up real-time price for market:', marketId, 'primary outcome:', primaryOutcomeId);
     wsService.connect();
 
     // Wait for connection before subscribing
@@ -39,7 +39,13 @@ export const useRealtimePrice = (marketId?: string) => {
 
     const handlePriceUpdate = (data: unknown) => {
       const update = data as PriceUpdate;
+      // Only process updates for the current market and its primary outcome
       if (update.marketId === marketId) {
+        if (primaryOutcomeId && update.outcomeId !== primaryOutcomeId) {
+          // Filter to only primary outcome if specified
+          return;
+        }
+        console.log('Received price update for primary outcome:', update);
         setPriceUpdate(update);
       }
       // Silently ignore updates for other markets (no need to log)
@@ -54,7 +60,7 @@ export const useRealtimePrice = (marketId?: string) => {
         wsService.emit('unsubscribe_market', marketId);
       }
     };
-  }, [marketId]);
+  }, [marketId, primaryOutcomeId]);
 
   return priceUpdate;
 };

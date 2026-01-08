@@ -12,9 +12,18 @@ export const MarketCard = memo(({ market }: MarketCardProps) => {
   const priceUpdate = useRealtimePrice(market.id);
   
   // Use real-time price if available, otherwise use initial price from API, fallback to 50%
-  const probability = priceUpdate?.impliedProbability 
-    || market.currentPrice?.implied_probability 
-    || 50;
+  // Ensure probability is always a number
+  const getProbability = (): number => {
+    if (priceUpdate?.impliedProbability !== undefined && priceUpdate.impliedProbability !== null) {
+      return Number(priceUpdate.impliedProbability);
+    }
+    if (market.currentPrice?.implied_probability !== undefined && market.currentPrice.implied_probability !== null) {
+      return Number(market.currentPrice.implied_probability);
+    }
+    return 50;
+  };
+  
+  const probability = getProbability();
   const isUpdating = !!priceUpdate;
 
   const getCategoryColor = (category: string) => {

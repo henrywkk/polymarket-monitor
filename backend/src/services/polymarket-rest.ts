@@ -324,26 +324,82 @@ export class PolymarketRestClient {
         // 1. Check for tokens array (common in CLOB and Gamma /markets)
         const tokens = data.tokens || data.outcomes;
         if (tokens && Array.isArray(tokens) && tokens.length > 0) {
+          // Log first token to see structure
+          if (tokens.length > 0 && Math.random() < 0.1) {
+            console.log(`[Sync Debug] Sample token structure from ${endpoint}:`, {
+              firstToken: tokens[0],
+              allTokenKeys: tokens.length > 0 ? Object.keys(tokens[0]) : [],
+              tokenCount: tokens.length,
+            });
+          }
+          
           const result = tokens.map((t: any) => ({
             token_id: t.token_id || t.asset_id || t.id,
-            outcome: t.outcome || t.label || '',
+            outcome: t.outcome || t.label || t.name || t.title || '',
           })).filter(t => t.token_id);
           
           if (result.length > 0) {
             console.log(`[Sync] Found ${result.length} tokens via ${endpoint}`);
+            // Log outcomes to see if we're getting bucket names or Yes/No
+            if (result.length > 2 && Math.random() < 0.2) {
+              console.log(`[Sync Debug] Token outcomes:`, result.map(r => r.outcome));
+            }
             return result;
           }
         }
 
         // 2. Check for nested markets (common in Gamma /events)
+        // For multi-outcome markets, the event might have multiple sub-markets
+        // Each sub-market represents a bucket (e.g., "<0.5%", "0.5-1.0%")
+        // and has Yes/No tokens. We need to extract the bucket name from the sub-market's question.
         if (data.markets && Array.isArray(data.markets) && data.markets.length > 0) {
-          console.log(`[Sync] Found ${data.markets.length} nested markets in event. Checking first market for tokens...`);
+          console.log(`[Sync] Found ${data.markets.length} nested markets in event. Structure:`, {
+            eventQuestion: data.question || data.title,
+            markets: data.markets.map((m: any) => ({
+              question: m.question || m.title,
+              conditionId: m.condition_id || m.conditionId,
+              tokenCount: (m.tokens || m.outcomes || []).length,
+            })),
+          });
+          
+          // For multi-outcome markets, collect all sub-markets with their bucket names
+          const allTokens: Array<{ token_id: string; outcome: string; bucketName?: string }> = [];
+          
+          for (const subMarket of data.markets) {
+            const marketTokens = subMarket.tokens || subMarket.outcomes;
+            const bucketName = subMarket.question || subMarket.title || subMarket.label || '';
+            
+            if (marketTokens && Array.isArray(marketTokens)) {
+              const subMarketTokens = marketTokens.map((t: any) => ({
+                token_id: t.token_id || t.asset_id || t.id,
+                outcome: t.outcome || t.label || t.name || '',
+                bucketName: bucketName, // Store bucket name from sub-market question
+              })).filter(t => t.token_id);
+              
+              allTokens.push(...subMarketTokens);
+            }
+          }
+          
+          if (allTokens.length > 0) {
+            console.log(`[Sync] Extracted ${allTokens.length} tokens from ${data.markets.length} sub-markets`);
+            // Log bucket names if found
+            const uniqueBuckets = [...new Set(allTokens.map(t => t.bucketName).filter(Boolean))];
+            if (uniqueBuckets.length > 0) {
+              console.log(`[Sync] Bucket names found:`, uniqueBuckets);
+            }
+            return allTokens.map(t => ({
+              token_id: t.token_id,
+              outcome: t.bucketName || t.outcome, // Prefer bucket name over Yes/No
+            }));
+          }
+          
+          // Fallback: check first market only
           const firstMarket = data.markets[0];
-          const marketTokens = firstMarket.tokens || firstMarket.outcomes;
-          if (marketTokens && Array.isArray(marketTokens)) {
-            return marketTokens.map((t: any) => ({
+          const firstMarketTokens = firstMarket.tokens || firstMarket.outcomes;
+          if (firstMarketTokens && Array.isArray(firstMarketTokens)) {
+            return firstMarketTokens.map((t: any) => ({
               token_id: t.token_id || t.asset_id || t.id,
-              outcome: t.outcome || t.label || '',
+              outcome: t.outcome || t.label || t.name || '',
             })).filter(t => t.token_id);
           }
           

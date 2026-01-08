@@ -488,18 +488,27 @@ export class MarketSyncService {
     // Sync outcomes if available
     // After syncing outcomes, we'll subscribe to price updates
     if (outcomesWithTokens && outcomesWithTokens.length > 0) {
+      // Log outcome data for debugging - especially for markets that might have bucket-style outcomes
+      const marketQuestion = pmMarket.question || '';
+      const mightBeBucketMarket = marketQuestion.toLowerCase().includes('growth') || 
+                                   marketQuestion.toLowerCase().includes('gdp') ||
+                                   marketQuestion.toLowerCase().includes('%') ||
+                                   outcomesWithTokens.length > 2;
+      
+      if (mightBeBucketMarket || Math.random() < 0.1) {
+        console.log(`[Sync] Market ${marketId} ("${marketQuestion}") - Outcome data:`, {
+          outcomesCount: outcomesWithTokens.length,
+          outcomes: outcomesWithTokens.map(o => ({
+            outcome: o.outcome,
+            tokenId: o.tokenId,
+            id: o.id,
+          })),
+          conditionId: pmMarket.conditionId,
+          questionId: pmMarket.questionId,
+        });
+      }
+      
       for (const pmOutcome of outcomesWithTokens) {
-        // Log first few outcomes to debug token_id extraction
-        if (Math.random() < 0.05) {
-          console.log(`[Sync] Market ${marketId} outcome data:`, {
-            outcome: pmOutcome.outcome,
-            id: pmOutcome.id,
-            tokenId: pmOutcome.tokenId,
-            marketConditionId: pmMarket.conditionId,
-            marketQuestionId: pmMarket.questionId,
-          });
-        }
-        
         const outcome: Omit<Outcome, 'createdAt'> = {
           id: pmOutcome.id || pmOutcome.tokenId || `${marketId}-${pmOutcome.outcome}`,
           marketId: marketId,

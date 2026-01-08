@@ -4,7 +4,6 @@ import { query } from '../config/database';
 import { Market, MarketWithOutcomes, Outcome } from '../models/Market';
 import { cacheService } from '../services/cache-service';
 import { redis } from '../config/redis';
-import { calculateLiquidityScore } from '../utils/liquidity';
 
 const router = Router();
 

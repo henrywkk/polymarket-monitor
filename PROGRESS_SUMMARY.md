@@ -206,6 +206,7 @@ React Components → Display with real-time updates
 5. ✅ **Liquidity Calculation**: Real-time liquidity scores for all markets
 6. ✅ **Expected Value**: Accurate calculation for continuous outcome markets
 7. ✅ **Volume Tracking**: 24h and Total volume storage with periodic snapshots
+8. ✅ **Database Health**: Automatically migrates schema changes on deployment
 
 ### Frontend
 1. ✅ **Probability Display**: Context-aware (Expected Value vs Probability)

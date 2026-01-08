@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, ExternalLink } from 'lucide-react';
+import { Search, ExternalLink, Server, Wifi, Activity, Clock } from 'lucide-react';
 import { useMarkets } from '../hooks/useMarkets';
 import { Link } from 'react-router-dom';
 import { wsService } from '../services/websocket';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface StatCardProps {
   label: string;
@@ -110,6 +111,21 @@ export const MarketList = () => {
     if (volume >= 1000000) return `$${(volume / 1000000).toFixed(1)}M`;
     if (volume >= 1000) return `$${(volume / 1000).toFixed(1)}K`;
     return `$${Number(volume).toFixed(0)}`;
+  };
+
+  const formatLastTrade = (timestamp: string | undefined) => {
+    if (!timestamp) return 'No trades';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHr = Math.floor(diffMin / 60);
+
+    if (diffSec < 60) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHr < 24) return `${diffHr}h ago`;
+    return date.toLocaleDateString();
   };
 
   // Get probability display - uses probabilityDisplay from backend if available
@@ -260,6 +276,7 @@ export const MarketList = () => {
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Probability</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Vol (24h)</th>
+                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Last Trade</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-center">Category</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Liquidity</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Status</th>
@@ -267,80 +284,92 @@ export const MarketList = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/40">
-                  {data.data.map((market) => {
-                    const probDisplay = getProbabilityDisplay(market);
-                    const isHighProbability = probDisplay.value > 70 || probDisplay.value < 30;
-                    
-                    return (
-                      <tr 
-                        key={market.id} 
-                        className="group hover:bg-slate-800/20 transition-all"
-                      >
-                        <td className="px-8 py-6">
-                          <div className="flex flex-col">
-                            <Link 
-                              to={`/markets/${market.id}`}
-                              className="text-white font-bold text-base leading-tight group-hover:text-blue-400 transition-colors"
-                            >
-                              {market.question}
-                            </Link>
-                            <span className="text-slate-500 text-xs mt-1 font-mono uppercase tracking-tighter">{market.id}</span>
-                          </div>
-                        </td>
-                        <td className="px-8 py-6 text-right">
-                          <div className="flex flex-col items-end">
-                            <div className={`font-mono font-black text-lg ${
-                              isHighProbability ? 'text-red-500' : 'text-blue-400'
-                            }`}>
-                              {Number(probDisplay.value).toFixed(probDisplay.label === 'Expected Value' ? 2 : 1)}%
+                  <AnimatePresence mode="popLayout">
+                    {data.data.map((market) => {
+                      const probDisplay = getProbabilityDisplay(market);
+                      const isHighProbability = probDisplay.value > 70 || probDisplay.value < 30;
+                      
+                      return (
+                        <motion.tr 
+                          key={market.id} 
+                          layout
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="group hover:bg-slate-800/20 transition-all"
+                        >
+                          <td className="px-8 py-6">
+                            <div className="flex flex-col">
+                              <Link 
+                                to={`/markets/${market.id}`}
+                                className="text-white font-bold text-base leading-tight group-hover:text-blue-400 transition-colors"
+                              >
+                                {market.question}
+                              </Link>
+                              <span className="text-slate-500 text-xs mt-1 font-mono uppercase tracking-tighter">{market.id}</span>
                             </div>
-                            {probDisplay.outcome && (
-                              <div className="text-xs text-slate-500 mt-0.5">
-                                {probDisplay.outcome}
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="flex flex-col items-end">
+                              <div className={`font-mono font-black text-lg ${
+                                isHighProbability ? 'text-red-500' : 'text-blue-400'
+                              }`}>
+                                {Number(probDisplay.value).toFixed(probDisplay.label === 'Expected Value' ? 2 : 1)}%
                               </div>
-                            )}
-                            {probDisplay.label === 'Expected Value' && (
-                              <div className="text-xs text-slate-500 mt-0.5">
-                                Expected
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-8 py-6 text-right">
-                          <div className="text-slate-300 font-mono font-bold">
-                            {formatVolume(market.volume24h)}
-                          </div>
-                        </td>
-                        <td className="px-8 py-6 text-center">
-                          <span className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-800/50 text-[10px] font-bold uppercase ${getCategoryColor(market.category)}`}>
-                            {market.category}
-                          </span>
-                        </td>
-                        <td className="px-8 py-6 text-right">
-                          <div className="text-slate-300 text-sm font-mono font-semibold">
-                            {formatVolume(market.liquidityScore)}
-                          </div>
-                        </td>
-                        <td className="px-8 py-6 text-right">
-                          <div className="text-slate-400 text-sm font-mono">
-                            {formatEndDate(market.end_date)}
-                          </div>
-                        </td>
-                        <td className="px-8 py-6 text-right">
-                          <a
-                            href={market.slug 
-                              ? `https://polymarket.com/event/${market.slug}`
-                              : `https://polymarket.com/event/${market.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white transition-all transform active:scale-95"
-                          >
-                            <ExternalLink className="w-5 h-5" />
-                          </a>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                              {probDisplay.outcome && (
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                  {probDisplay.outcome}
+                                </div>
+                              )}
+                              {probDisplay.label === 'Expected Value' && (
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                  Expected
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="text-slate-300 font-mono font-bold">
+                              {formatVolume(market.volume24h)}
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="text-slate-400 text-xs font-mono">
+                              {formatLastTrade(market.lastTradeAt)}
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 text-center">
+                            <span className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-800/50 text-[10px] font-bold uppercase ${getCategoryColor(market.category)}`}>
+                              {market.category}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="text-slate-300 text-sm font-mono font-semibold">
+                              {formatVolume(market.liquidityScore)}
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="text-slate-400 text-sm font-mono">
+                              {formatEndDate(market.end_date)}
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <a
+                              href={market.slug 
+                                ? `https://polymarket.com/event/${market.slug}`
+                                : `https://polymarket.com/event/${market.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white transition-all transform active:scale-95"
+                            >
+                              <ExternalLink className="w-5 h-5" />
+                            </a>
+                          </td>
+                        </motion.tr>
+                      );
+                    })}
+                  </AnimatePresence>
                 </tbody>
               </table>
             </div>

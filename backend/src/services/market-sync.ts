@@ -443,6 +443,7 @@ export class MarketSyncService {
       volume: pmMarket.volume ? parseFloat(String(pmMarket.volume)) : 0,
       volume24h: pmMarket.volume24h ? parseFloat(String(pmMarket.volume24h)) : 0,
       liquidity: pmMarket.liquidity ? parseFloat(String(pmMarket.liquidity)) : 0,
+      activityScore: pmMarket.volume24h ? parseFloat(String(pmMarket.volume24h)) : 0,
     };
 
     // Upsert market

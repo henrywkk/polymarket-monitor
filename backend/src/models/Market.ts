@@ -8,6 +8,8 @@ export interface Market {
   volume?: number;
   volume24h?: number;
   liquidity?: number;
+  lastTradeAt?: Date;
+  activityScore?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,6 +18,7 @@ export interface MarketWithOutcomes extends Market {
   outcomes?: Outcome[];
   currentPrice?: PriceData;
   liquidityScore?: number; // 0-100 liquidity score
+  lastTradeAt?: Date;
 }
 
 export interface Outcome {

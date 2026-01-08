@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS markets (
     volume DECIMAL(20, 8) DEFAULT 0,
     volume_24h DECIMAL(20, 8) DEFAULT 0,
     liquidity DECIMAL(20, 8) DEFAULT 0,
+    last_trade_at TIMESTAMP,
+    activity_score DECIMAL(10, 5) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

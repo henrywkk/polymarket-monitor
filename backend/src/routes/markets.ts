@@ -325,9 +325,9 @@ router.get('/', async (req: Request, res: Response) => {
 
     let orderBy = 'ORDER BY updated_at DESC';
     if (sortBy === 'liquidity') {
-      // Use the stored liquidity score first, but fallback to dynamic calculation for sorting
-      // This ensures we always have a sort order even if snapshots haven't run
-      orderBy = `ORDER BY liquidity DESC, (
+      // Use the dynamic liquidity calculation for sorting
+      // This matches our internal calculateLiquidityScores logic
+      orderBy = `ORDER BY (
         SELECT COALESCE(
           (
             LEAST(COUNT(*)::numeric / 100 * 40, 40) + -- Frequency score
@@ -350,6 +350,8 @@ router.get('/', async (req: Request, res: Response) => {
       orderBy = 'ORDER BY volume DESC NULLS LAST';
     } else if (sortBy === 'volume24h') {
       orderBy = 'ORDER BY volume_24h DESC NULLS LAST';
+    } else if (sortBy === 'activity') {
+      orderBy = 'ORDER BY activity_score DESC NULLS LAST, volume_24h DESC NULLS LAST';
     } else if (sortBy === 'endingSoon') {
       orderBy = 'ORDER BY end_date ASC NULLS LAST';
     }
@@ -368,6 +370,24 @@ router.get('/', async (req: Request, res: Response) => {
     `;
     params.push(limit, offset);
     const marketsResult = await query(marketsQuery, params);
+
+    // Calculate our better internal liquidity scores for the current page
+    const marketIds = marketsResult.rows.map((row: any) => row.id);
+    const { calculateLiquidityScores } = await import('../utils/liquidity');
+    const internalLiquidityScores = await calculateLiquidityScores(marketIds);
+
+    // Get last updated time for each market from price_history
+    const lastUpdateResult = await query(`
+      SELECT market_id, MAX(timestamp) as last_update
+      FROM price_history
+      WHERE market_id = ANY($1)
+      GROUP BY market_id
+    `, [marketIds]);
+    
+    const lastUpdates = new Map<string, string>();
+    for (const row of lastUpdateResult.rows) {
+      lastUpdates.set(row.market_id, row.last_update);
+    }
 
     // Helper function to check if outcome looks like a bucket (continuous range)
     const isBucketOutcome = (outcome: string): boolean => {
@@ -539,9 +559,10 @@ router.get('/', async (req: Request, res: Response) => {
           ...market,
           currentPrice,
           probabilityDisplay,
-          liquidityScore: (market as any).liquidity || 0, // Use stored score
+          liquidityScore: internalLiquidityScores.get(market.id) || 0, // Use our better internal score
           volume: (market as any).volume || 0,
           volume24h: (market as any).volume_24h || 0,
+          lastTradeAt: lastUpdates.get(market.id) || market.updated_at,
         };
       })
     );
@@ -660,6 +681,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       liquidityScore: (market as any).liquidity || 0,
       volume: (market as any).volume || 0,
       volume24h: (market as any).volume_24h || 0,
+      lastTradeAt: (market as any).last_trade_at,
     };
 
     // Cache the result

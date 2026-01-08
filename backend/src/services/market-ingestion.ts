@@ -49,8 +49,8 @@ export class MarketIngestionService {
   async upsertMarket(market: Omit<Market, 'createdAt' | 'updatedAt'>): Promise<void> {
     try {
       await query(
-        `INSERT INTO markets (id, question, slug, category, end_date, image_url, volume, volume_24h, liquidity)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO markets (id, question, slug, category, end_date, image_url, volume, volume_24h, liquidity, activity_score)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (id) 
          DO UPDATE SET 
            question = EXCLUDED.question,
@@ -61,6 +61,7 @@ export class MarketIngestionService {
            volume = EXCLUDED.volume,
            volume_24h = EXCLUDED.volume_24h,
            liquidity = EXCLUDED.liquidity,
+           activity_score = EXCLUDED.activity_score,
            updated_at = CURRENT_TIMESTAMP`,
         [
           market.id,
@@ -72,6 +73,7 @@ export class MarketIngestionService {
           market.volume || 0,
           market.volume24h || 0,
           market.liquidity || 0,
+          market.activityScore || 0,
         ]
       );
       // Removed verbose logging to reduce Railway log rate limit
@@ -262,6 +264,12 @@ export class MarketIngestionService {
       // Invalidate cache for this market
       const { cacheService } = await import('./cache-service');
       await cacheService.invalidateMarket(marketId);
+
+      // Update last_trade_at for the market
+      await query(
+        'UPDATE markets SET last_trade_at = NOW() WHERE id = $1',
+        [marketId]
+      );
     } catch (error) {
       console.error('Error handling price event:', error);
     }

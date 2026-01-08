@@ -590,6 +590,10 @@ export class MarketSyncService {
           questionId: pmMarket.questionId,
         });
       }
+
+      // Determine if this is a binary market
+      const isBinaryMarket = outcomesWithTokens.length === 2 && 
+        outcomesWithTokens.some(o => o.outcome && ['yes', 'no', 'true', 'false', '1', '0'].includes(o.outcome.toLowerCase()));
       
       for (const pmOutcome of outcomesWithTokens) {
         const outcomeId = pmOutcome.id || pmOutcome.tokenId || `${marketId}-${pmOutcome.outcome}`;

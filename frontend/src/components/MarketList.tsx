@@ -14,7 +14,7 @@ const SORT_OPTIONS = [
 interface StatCardProps {
   label: string;
   value: string | number;
-  color: 'blue' | 'red' | 'purple' | 'slate';
+  color: 'blue' | 'red' | 'purple' | 'slate' | 'green';
 }
 
 const StatCard = ({ label, value, color }: StatCardProps) => {
@@ -22,6 +22,7 @@ const StatCard = ({ label, value, color }: StatCardProps) => {
     blue: 'text-blue-400 border-blue-500/20',
     red: 'text-red-400 border-red-500/20',
     purple: 'text-purple-400 border-purple-500/20',
+    green: 'text-green-400 border-green-500/20',
     slate: 'text-slate-400 border-slate-500/20',
   };
   return (

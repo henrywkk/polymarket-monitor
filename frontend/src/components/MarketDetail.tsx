@@ -11,10 +11,10 @@ export const MarketDetail = () => {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-          <p className="mt-4 text-gray-600">Loading market details...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-400 font-medium">Loading market details...</p>
         </div>
       </div>
     );
@@ -22,13 +22,13 @@ export const MarketDetail = () => {
 
   if (error || !market) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+      <div className="max-w-7xl mx-auto px-6 py-10">
+        <div className="bg-red-950/80 border border-red-500/50 rounded-xl p-6 text-red-100">
           Error loading market. Please try again later.
         </div>
         <Link
           to="/"
-          className="mt-4 inline-flex items-center text-primary-600 hover:text-primary-700"
+          className="mt-6 inline-flex items-center text-blue-400 hover:text-blue-300 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Markets
@@ -38,13 +38,8 @@ export const MarketDetail = () => {
   }
 
   const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      Politics: 'bg-blue-100 text-blue-800',
-      Crypto: 'bg-yellow-100 text-yellow-800',
-      Sports: 'bg-green-100 text-green-800',
-      'Pop Culture': 'bg-purple-100 text-purple-800',
-    };
-    return colors[category] || 'bg-gray-100 text-gray-800';
+    // Not used anymore, but keeping for compatibility
+    return '';
   };
 
   const formatEndDate = (endDate: string | null) => {
@@ -83,58 +78,61 @@ export const MarketDetail = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-6 py-10">
       <Link
         to="/"
-        className="inline-flex items-center text-primary-600 hover:text-primary-700 mb-6"
+        className="inline-flex items-center text-blue-400 hover:text-blue-300 mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
         Back to Markets
       </Link>
 
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex items-start justify-between mb-4">
+      <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-8 mb-6">
+        <div className="flex items-start justify-between mb-6">
           <span
-            className={`px-3 py-1 rounded-full text-sm font-medium ${getCategoryColor(
-              market.category
-            )}`}
+            className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest border ${
+              market.category === 'Crypto' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+              market.category === 'Politics' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+              market.category === 'Sports' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+              'bg-purple-500/10 text-purple-400 border-purple-500/20'
+            }`}
           >
             {market.category}
           </span>
           {priceUpdate && (
-            <span className="flex items-center text-green-600 text-sm">
-              <TrendingUp className="w-4 h-4 mr-1" />
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-bold uppercase">
+              <TrendingUp className="w-3 h-3" />
               Live Updates
             </span>
           )}
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">
+        <h1 className="text-3xl font-black text-white mb-8 leading-tight">
           {market.question}
         </h1>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-sm text-gray-600 mb-1">Implied Probability</p>
-            <p className="text-3xl font-bold text-primary-600">
+          <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Implied Probability</p>
+            <p className="text-4xl font-black text-blue-400">
               {currentPrice?.implied_probability !== undefined && currentPrice.implied_probability !== null
                 ? `${Number(currentPrice.implied_probability).toFixed(1)}%`
                 : 'N/A'}
             </p>
           </div>
 
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-sm text-gray-600 mb-1">Bid Price</p>
-            <p className="text-3xl font-bold text-gray-900">
+          <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Bid Price</p>
+            <p className="text-4xl font-black text-slate-200 font-mono">
               {currentPrice?.bid_price !== undefined && currentPrice.bid_price !== null
                 ? Number(currentPrice.bid_price).toFixed(4)
                 : 'N/A'}
             </p>
           </div>
 
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-sm text-gray-600 mb-1">Ask Price</p>
-            <p className="text-3xl font-bold text-gray-900">
+          <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Ask Price</p>
+            <p className="text-4xl font-black text-slate-200 font-mono">
               {currentPrice?.ask_price !== undefined && currentPrice.ask_price !== null
                 ? Number(currentPrice.ask_price).toFixed(4)
                 : 'N/A'}
@@ -142,15 +140,15 @@ export const MarketDetail = () => {
           </div>
         </div>
 
-        <div className="flex items-center text-gray-600">
+        <div className="flex items-center text-slate-400">
           <Clock className="w-4 h-4 mr-2" />
-          <span>End Date: {formatEndDate(market.end_date)}</span>
+          <span className="text-sm font-medium">End Date: {formatEndDate(market.end_date)}</span>
         </div>
       </div>
 
       {/* Price History Chart */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">
+      <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-8 mb-6">
+        <h2 className="text-2xl font-black text-white mb-6">
           Price History
         </h2>
         <PriceChart marketId={market.id} />
@@ -158,20 +156,20 @@ export const MarketDetail = () => {
 
       {/* Outcomes */}
       {market.outcomes && market.outcomes.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md p-6 mt-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Outcomes</h2>
+        <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-8">
+          <h2 className="text-2xl font-black text-white mb-6">Outcomes</h2>
           <div className="space-y-4">
             {market.outcomes.map((outcome) => (
               <div
                 key={outcome.id}
-                className="border border-gray-200 rounded-lg p-4"
+                className="border border-slate-800/60 rounded-2xl p-6 bg-slate-900/30 hover:bg-slate-900/50 transition-colors"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-gray-900">
+                  <span className="font-bold text-white text-lg">
                     {outcome.outcome}
                   </span>
                   {outcome.currentPrice && outcome.currentPrice.implied_probability !== undefined && outcome.currentPrice.implied_probability !== null && (
-                    <span className="text-primary-600 font-bold">
+                    <span className="text-blue-400 font-black text-2xl font-mono">
                       {Number(outcome.currentPrice.implied_probability).toFixed(1)}%
                     </span>
                   )}

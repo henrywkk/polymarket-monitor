@@ -22,21 +22,14 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="container mx-auto px-4 py-4">
-            <h1 className="text-2xl font-bold text-gray-900">
-              Polymarket Dashboard
-            </h1>
-          </div>
-        </header>
+      <div className="min-h-screen bg-[#0b0f1a] text-slate-200 antialiased">
         <main>
           <Suspense
             fallback={
-              <div className="container mx-auto px-4 py-8">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <p className="mt-4 text-gray-600">Loading...</p>
+              <div className="min-h-screen flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-slate-400 font-medium">Syncing with Polymarket CLOB...</p>
                 </div>
               </div>
             }

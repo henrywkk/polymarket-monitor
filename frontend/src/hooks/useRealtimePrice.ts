@@ -38,14 +38,11 @@ export const useRealtimePrice = (marketId?: string) => {
     }
 
     const handlePriceUpdate = (data: unknown) => {
-      console.log('Received price update:', data);
       const update = data as PriceUpdate;
       if (update.marketId === marketId) {
-        console.log('Price update matches market, updating state');
         setPriceUpdate(update);
-      } else {
-        console.log('Price update for different market:', update.marketId, 'expected:', marketId);
       }
+      // Silently ignore updates for other markets (no need to log)
     };
 
     wsService.on('price_update', handlePriceUpdate);

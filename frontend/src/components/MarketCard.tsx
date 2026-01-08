@@ -11,8 +11,10 @@ interface MarketCardProps {
 export const MarketCard = memo(({ market }: MarketCardProps) => {
   const priceUpdate = useRealtimePrice(market.id);
   
-  // Use real-time price if available, otherwise show placeholder
-  const probability = priceUpdate?.impliedProbability || 50;
+  // Use real-time price if available, otherwise use initial price from API, fallback to 50%
+  const probability = priceUpdate?.impliedProbability 
+    || market.currentPrice?.implied_probability 
+    || 50;
   const isUpdating = !!priceUpdate;
 
   const getCategoryColor = (category: string) => {

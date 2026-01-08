@@ -366,8 +366,63 @@ router.get('/', async (req: Request, res: Response) => {
     params.push(limit, offset);
     const marketsResult = await query(marketsQuery, params);
 
+    // Enrich markets with current prices from Redis
+    const marketsWithPrices = await Promise.all(
+      marketsResult.rows.map(async (market: Market) => {
+        // Get first outcome for this market to fetch price
+        const outcomes = await query(
+          'SELECT token_id FROM outcomes WHERE market_id = $1 LIMIT 1',
+          [market.id]
+        );
+        
+        let currentPrice = null;
+        if (outcomes.rows.length > 0) {
+          try {
+            const redisKey = `market:${market.id}:price:${outcomes.rows[0].token_id}`;
+            const cached = await redis.get(redisKey);
+            if (cached) {
+              const priceData = JSON.parse(cached);
+              // Convert to the format expected by frontend
+              currentPrice = {
+                bid_price: priceData.bid,
+                ask_price: priceData.ask,
+                mid_price: priceData.mid,
+                implied_probability: priceData.probability,
+              };
+            }
+          } catch (error) {
+            // Ignore Redis errors, fallback to database
+          }
+        }
+        
+        // Fallback to database if Redis doesn't have it
+        if (!currentPrice && outcomes.rows.length > 0) {
+          const priceResult = await query(
+            `SELECT * FROM price_history 
+             WHERE market_id = $1 
+             ORDER BY timestamp DESC 
+             LIMIT 1`,
+            [market.id]
+          );
+          if (priceResult.rows.length > 0) {
+            currentPrice = {
+              bid_price: priceResult.rows[0].bid_price,
+              ask_price: priceResult.rows[0].ask_price,
+              mid_price: priceResult.rows[0].mid_price,
+              implied_probability: priceResult.rows[0].implied_probability,
+            };
+          }
+        }
+
+        return {
+          ...market,
+          currentPrice,
+        };
+      })
+    );
+
     const response = {
-      data: marketsResult.rows,
+      data: marketsWithPrices,
       pagination: {
         page,
         limit,

@@ -71,6 +71,12 @@ export interface Market {
   image_url: string | null;
   created_at: string;
   updated_at: string;
+  currentPrice?: {
+    bid_price: number;
+    ask_price: number;
+    mid_price: number;
+    implied_probability: number;
+  };
 }
 
 export interface Outcome {

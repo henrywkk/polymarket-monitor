@@ -6,6 +6,7 @@ import {
   isBinaryMarket, 
   calculateExpectedValue, 
   getPrimaryOutcome,
+  getOutcomeSortKey,
   OutcomeWithPrice 
 } from '../utils/market-calculations';
 import {
@@ -234,6 +235,13 @@ export const MarketDetail = () => {
               const buckets = groupOutcomesByBucket(market.outcomes);
               const bucketEntries = Array.from(buckets.entries());
               
+              // Sort bucket entries by their numerical value for human-readable order
+              bucketEntries.sort(([a], [b]) => {
+                const sortKeyA = getOutcomeSortKey(a);
+                const sortKeyB = getOutcomeSortKey(b);
+                return sortKeyA - sortKeyB;
+              });
+              
               // If we have buckets, display them; otherwise display all outcomes
               if (bucketEntries.length > 0 && bucketEntries.length < market.outcomes.length) {
                 return bucketEntries.map(([bucketName, bucketOutcomes]) => {
@@ -281,7 +289,14 @@ export const MarketDetail = () => {
                 });
               } else {
                 // Display all outcomes individually (for binary markets or when grouping doesn't apply)
-                return market.outcomes.map((outcome) => {
+                // Sort outcomes by their numerical value for human-readable order
+                const sortedOutcomes = [...market.outcomes].sort((a, b) => {
+                  const sortKeyA = getOutcomeSortKey(a.outcome);
+                  const sortKeyB = getOutcomeSortKey(b.outcome);
+                  return sortKeyA - sortKeyB;
+                });
+                
+                return sortedOutcomes.map((outcome) => {
                   const isPrimary = primaryOutcome?.id === outcome.id;
                   return (
                     <div

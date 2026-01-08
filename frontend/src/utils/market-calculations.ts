@@ -20,13 +20,13 @@ export interface OutcomeWithPrice {
 /**
  * Parse numeric value from outcome string (e.g., "<0.5%" -> 0.25, "2.0-2.5%" -> 2.25)
  * Returns null if unable to parse
+ * Note: Returns the percentage value directly (e.g., 0.25 for 0.25%, 2.25 for 2.25%)
  */
 function parseOutcomeMidpoint(outcome: string): number | null {
-  // Remove common prefixes/suffixes
-  const cleaned = outcome.trim().replace(/[<>%]/g, '');
+  const trimmed = outcome.trim();
   
-  // Try to match range patterns like "0.5-1.0" or "2.0-2.5"
-  const rangeMatch = cleaned.match(/^([\d.]+)\s*-\s*([\d.]+)$/);
+  // Try to match range patterns like "0.5-1.0%" or "2.0–2.5%" (note: may use en-dash or hyphen)
+  const rangeMatch = trimmed.match(/^([\d.]+)\s*[–-]\s*([\d.]+)\s*%?$/);
   if (rangeMatch) {
     const min = parseFloat(rangeMatch[1]);
     const max = parseFloat(rangeMatch[2]);
@@ -35,25 +35,32 @@ function parseOutcomeMidpoint(outcome: string): number | null {
     }
   }
   
-  // Try to match single value patterns like "<0.5" or ">2.5"
-  const lessThanMatch = cleaned.match(/^<\s*([\d.]+)$/);
+  // Try to match less-than patterns like "<0.5%" (check BEFORE removing <)
+  const lessThanMatch = trimmed.match(/^<\s*([\d.]+)\s*%?$/);
   if (lessThanMatch) {
     const value = parseFloat(lessThanMatch[1]);
     if (!isNaN(value)) {
-      return value * 0.5; // Assume midpoint is half of the threshold
+      // For "<0.5%", assume midpoint is 0.25% (halfway between 0 and 0.5%)
+      return value / 2;
     }
   }
   
-  const greaterThanMatch = cleaned.match(/^>\s*([\d.]+)$/);
+  // Try to match greater-than patterns like ">2.5%" (check BEFORE removing >)
+  const greaterThanMatch = trimmed.match(/^>\s*([\d.]+)\s*%?$/);
   if (greaterThanMatch) {
     const value = parseFloat(greaterThanMatch[1]);
     if (!isNaN(value)) {
-      return value * 1.5; // Assume midpoint is 1.5x the threshold
+      // For ">2.5%", we need to estimate. A reasonable approach:
+      // Assume the range extends to some reasonable upper bound (e.g., 2x the threshold)
+      // Midpoint would be halfway between threshold and upper bound
+      // For ">2.5%", if we assume upper bound of 5%, midpoint is (2.5 + 5) / 2 = 3.75%
+      // Or more conservatively, use threshold + 1% as midpoint: 2.5 + 1 = 3.5%
+      return value + 1.0; // Conservative estimate: threshold + 1%
     }
   }
   
-  // Try to match single number
-  const singleMatch = cleaned.match(/^([\d.]+)$/);
+  // Try to match single number with % (e.g., "5%")
+  const singleMatch = trimmed.match(/^([\d.]+)\s*%?$/);
   if (singleMatch) {
     const value = parseFloat(singleMatch[1]);
     if (!isNaN(value)) {
@@ -62,6 +69,53 @@ function parseOutcomeMidpoint(outcome: string): number | null {
   }
   
   return null;
+}
+
+/**
+ * Get sort key for outcome string to enable human-readable sorting
+ * Returns a number for sorting, or Infinity for unparseable outcomes
+ */
+export function getOutcomeSortKey(outcome: string): number {
+  const trimmed = outcome.trim();
+  
+  // Less-than patterns should come first (negative sort key)
+  const lessThanMatch = trimmed.match(/^<\s*([\d.]+)\s*%?$/);
+  if (lessThanMatch) {
+    const value = parseFloat(lessThanMatch[1]);
+    if (!isNaN(value)) {
+      return value - 1000; // Negative offset to sort before ranges
+    }
+  }
+  
+  // Range patterns: use the minimum value for sorting
+  const rangeMatch = trimmed.match(/^([\d.]+)\s*[–-]\s*([\d.]+)\s*%?$/);
+  if (rangeMatch) {
+    const min = parseFloat(rangeMatch[1]);
+    if (!isNaN(min)) {
+      return min;
+    }
+  }
+  
+  // Greater-than patterns should come last (large sort key)
+  const greaterThanMatch = trimmed.match(/^>\s*([\d.]+)\s*%?$/);
+  if (greaterThanMatch) {
+    const value = parseFloat(greaterThanMatch[1]);
+    if (!isNaN(value)) {
+      return value + 1000; // Large offset to sort after ranges
+    }
+  }
+  
+  // Single number
+  const singleMatch = trimmed.match(/^([\d.]+)\s*%?$/);
+  if (singleMatch) {
+    const value = parseFloat(singleMatch[1]);
+    if (!isNaN(value)) {
+      return value;
+    }
+  }
+  
+  // Unparseable outcomes go to the end
+  return Infinity;
 }
 
 /**

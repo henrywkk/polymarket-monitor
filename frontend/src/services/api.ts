@@ -127,8 +127,34 @@ export const marketsApi = {
     category?: string;
     sortBy?: string;
   }): Promise<MarketsResponse> => {
-    const response = await apiClient.get<MarketsResponse>('/markets', { params });
-    return response.data;
+    try {
+      console.log('Fetching markets with params:', params);
+      const response = await apiClient.get<MarketsResponse>('/markets', { params });
+      console.log('Markets API response:', response);
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
+      
+      if (!response.data) {
+        console.error('No data in response');
+        throw new Error('No data received from API');
+      }
+      
+      if (!response.data.data) {
+        console.error('No data.data in response:', response.data);
+        throw new Error('Invalid response format: missing data field');
+      }
+      
+      return response.data;
+    } catch (error: any) {
+      console.error('getMarkets error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      throw error;
+    }
   },
 
   getMarket: async (id: string): Promise<MarketWithOutcomes> => {

@@ -90,26 +90,32 @@ export const MarketList = () => {
   // Get probability display - uses probabilityDisplay from backend if available
   const getProbabilityDisplay = (market: any): { value: number; label: string; outcome?: string } => {
     if (market.probabilityDisplay) {
-      if (market.probabilityDisplay.type === 'expectedValue') {
-        return {
-          value: market.probabilityDisplay.value,
-          label: 'Expected Value',
-        };
-      } else {
-        return {
-          value: market.probabilityDisplay.value,
-          label: 'Probability',
-          outcome: market.probabilityDisplay.outcome,
-        };
+      const value = Number(market.probabilityDisplay.value);
+      if (!isNaN(value)) {
+        if (market.probabilityDisplay.type === 'expectedValue') {
+          return {
+            value,
+            label: 'Expected Value',
+          };
+        } else {
+          return {
+            value,
+            label: 'Probability',
+            outcome: market.probabilityDisplay.outcome,
+          };
+        }
       }
     }
     
     // Fallback to currentPrice for backward compatibility
     if (market.currentPrice?.implied_probability !== undefined && market.currentPrice.implied_probability !== null) {
-      return {
-        value: Number(market.currentPrice.implied_probability),
-        label: 'Probability',
-      };
+      const value = Number(market.currentPrice.implied_probability);
+      if (!isNaN(value)) {
+        return {
+          value,
+          label: 'Probability',
+        };
+      }
     }
     
     return {
@@ -270,7 +276,7 @@ export const MarketList = () => {
                             <div className={`font-mono font-black text-lg ${
                               isHighProbability ? 'text-red-500' : 'text-blue-400'
                             }`}>
-                              {probDisplay.value.toFixed(probDisplay.label === 'Expected Value' ? 2 : 1)}%
+                              {Number(probDisplay.value).toFixed(probDisplay.label === 'Expected Value' ? 2 : 1)}%
                             </div>
                             {probDisplay.outcome && (
                               <div className="text-xs text-slate-500 mt-0.5">

@@ -87,13 +87,35 @@ export const MarketList = () => {
     };
   }, [data]);
 
-  // Get probability - for Yes/No markets, this should be the "Yes" outcome probability
-  // The backend should provide currentPrice for the primary (Yes) outcome
-  const getProbability = (market: any): number => {
-    if (market.currentPrice?.implied_probability !== undefined && market.currentPrice.implied_probability !== null) {
-      return Number(market.currentPrice.implied_probability);
+  // Get probability display - uses probabilityDisplay from backend if available
+  const getProbabilityDisplay = (market: any): { value: number; label: string; outcome?: string } => {
+    if (market.probabilityDisplay) {
+      if (market.probabilityDisplay.type === 'expectedValue') {
+        return {
+          value: market.probabilityDisplay.value,
+          label: 'Expected Value',
+        };
+      } else {
+        return {
+          value: market.probabilityDisplay.value,
+          label: 'Probability',
+          outcome: market.probabilityDisplay.outcome,
+        };
+      }
     }
-    return 50;
+    
+    // Fallback to currentPrice for backward compatibility
+    if (market.currentPrice?.implied_probability !== undefined && market.currentPrice.implied_probability !== null) {
+      return {
+        value: Number(market.currentPrice.implied_probability),
+        label: 'Probability',
+      };
+    }
+    
+    return {
+      value: 50,
+      label: 'Probability',
+    };
   };
 
   const getCategoryColor = (category: string) => {
@@ -224,8 +246,8 @@ export const MarketList = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-800/40">
                   {data.data.map((market) => {
-                    const probability = getProbability(market);
-                    const isHighProbability = probability > 70 || probability < 30;
+                    const probDisplay = getProbabilityDisplay(market);
+                    const isHighProbability = probDisplay.value > 70 || probDisplay.value < 30;
                     
                     return (
                       <tr 
@@ -244,10 +266,22 @@ export const MarketList = () => {
                           </div>
                         </td>
                         <td className="px-8 py-6 text-right">
-                          <div className={`font-mono font-black text-lg ${
-                            isHighProbability ? 'text-red-500' : 'text-blue-400'
-                          }`}>
-                            {probability.toFixed(1)}%
+                          <div className="flex flex-col items-end">
+                            <div className={`font-mono font-black text-lg ${
+                              isHighProbability ? 'text-red-500' : 'text-blue-400'
+                            }`}>
+                              {probDisplay.value.toFixed(probDisplay.label === 'Expected Value' ? 2 : 1)}%
+                            </div>
+                            {probDisplay.outcome && (
+                              <div className="text-xs text-slate-500 mt-0.5">
+                                {probDisplay.outcome}
+                              </div>
+                            )}
+                            {probDisplay.label === 'Expected Value' && (
+                              <div className="text-xs text-slate-500 mt-0.5">
+                                Expected
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td className="px-8 py-6 text-center">

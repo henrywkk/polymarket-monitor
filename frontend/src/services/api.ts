@@ -77,6 +77,11 @@ export interface Market {
     mid_price: number;
     implied_probability: number;
   };
+  probabilityDisplay?: {
+    type: 'expectedValue' | 'highestProbability';
+    value: number;
+    outcome?: string;
+  };
 }
 
 export interface Outcome {

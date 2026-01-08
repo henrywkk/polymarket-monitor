@@ -366,25 +366,72 @@ router.get('/', async (req: Request, res: Response) => {
     params.push(limit, offset);
     const marketsResult = await query(marketsQuery, params);
 
-    // Enrich markets with current prices from Redis
-    // For Yes/No markets, prioritize "Yes" outcome
+    // Helper function to check if outcome looks like a bucket (continuous range)
+    const isBucketOutcome = (outcome: string): boolean => {
+      const lower = outcome.toLowerCase();
+      return (lower.includes('%') || lower.includes('-') || lower.includes('<') || lower.includes('>')) &&
+             !['yes', 'no', 'true', 'false', '1', '0'].includes(lower);
+    };
+
+    // Helper function to parse outcome midpoint for expected value calculation
+    const parseOutcomeMidpoint = (outcome: string): number | null => {
+      const trimmed = outcome.trim();
+      
+      // Range patterns like "0.5-1.0%" or "2.0–2.5%"
+      const rangeMatch = trimmed.match(/^([\d.]+)\s*[–-]\s*([\d.]+)\s*%?$/);
+      if (rangeMatch) {
+        const min = parseFloat(rangeMatch[1]);
+        const max = parseFloat(rangeMatch[2]);
+        if (!isNaN(min) && !isNaN(max)) {
+          return (min + max) / 2;
+        }
+      }
+      
+      // Less-than patterns like "<0.5%"
+      const lessThanMatch = trimmed.match(/^<\s*([\d.]+)\s*%?$/);
+      if (lessThanMatch) {
+        const value = parseFloat(lessThanMatch[1]);
+        if (!isNaN(value)) {
+          return value / 2;
+        }
+      }
+      
+      // Greater-than patterns like ">2.5%"
+      const greaterThanMatch = trimmed.match(/^>\s*([\d.]+)\s*%?$/);
+      if (greaterThanMatch) {
+        const value = parseFloat(greaterThanMatch[1]);
+        if (!isNaN(value)) {
+          return value + 1.0; // Conservative estimate
+        }
+      }
+      
+      return null;
+    };
+
+    // Enrich markets with current prices and calculate display probability
     const marketsWithPrices = await Promise.all(
       marketsResult.rows.map(async (market: Market) => {
-        // Get outcomes, prioritizing "Yes" for Yes/No markets
+        // Get all outcomes with their prices
         const allOutcomes = await query(
-          'SELECT id, token_id, outcome FROM outcomes WHERE market_id = $1 ORDER BY CASE WHEN LOWER(outcome) IN (\'yes\', \'true\', \'1\') THEN 0 ELSE 1 END, id LIMIT 1',
+          'SELECT id, token_id, outcome FROM outcomes WHERE market_id = $1',
           [market.id]
         );
         
-        let currentPrice = null;
-        if (allOutcomes.rows.length > 0) {
-          const primaryOutcome = allOutcomes.rows[0];
+        // Get prices for all outcomes
+        const outcomesWithPrices: Array<{
+          id: string;
+          token_id: string;
+          outcome: string;
+          currentPrice: any;
+        }> = [];
+        
+        for (const outcome of allOutcomes.rows) {
+          let currentPrice = null;
           try {
-            const redisKey = `market:${market.id}:price:${primaryOutcome.token_id}`;
+            const redisKey = `market:${market.id}:price:${outcome.token_id}`;
             const cached = await redis.get(redisKey);
             if (cached) {
               const priceData = JSON.parse(cached);
-              // Convert to the format expected by frontend
               currentPrice = {
                 bid_price: priceData.bid,
                 ask_price: priceData.ask,
@@ -393,7 +440,7 @@ router.get('/', async (req: Request, res: Response) => {
               };
             }
           } catch (error) {
-            // Ignore Redis errors, fallback to database
+            // Ignore Redis errors
           }
           
           // Fallback to database if Redis doesn't have it
@@ -403,7 +450,7 @@ router.get('/', async (req: Request, res: Response) => {
                WHERE outcome_id = $1 
                ORDER BY timestamp DESC 
                LIMIT 1`,
-              [primaryOutcome.id]
+              [outcome.id]
             );
             if (priceResult.rows.length > 0) {
               currentPrice = {
@@ -414,11 +461,81 @@ router.get('/', async (req: Request, res: Response) => {
               };
             }
           }
+          
+          if (currentPrice) {
+            outcomesWithPrices.push({
+              id: outcome.id,
+              token_id: outcome.token_id,
+              outcome: outcome.outcome,
+              currentPrice,
+            });
+          }
+        }
+
+        // Determine if this is a bucket market (continuous outcomes)
+        const hasBucketOutcomes = outcomesWithPrices.some(o => isBucketOutcome(o.outcome));
+        const isBinaryMarket = outcomesWithPrices.length === 2 && 
+          outcomesWithPrices.some(o => ['yes', 'no', 'true', 'false', '1', '0'].includes(o.outcome.toLowerCase()));
+
+        // Calculate display probability
+        let probabilityDisplay: { type: 'expectedValue' | 'highestProbability'; value: number; outcome?: string } | null = null;
+        let currentPrice = null;
+
+        if (hasBucketOutcomes && !isBinaryMarket) {
+          // Calculate expected value for bucket markets
+          let totalExpected = 0;
+          let hasValidData = false;
+          
+          for (const outcome of outcomesWithPrices) {
+            const probability = outcome.currentPrice?.implied_probability;
+            if (probability === undefined || probability === null) continue;
+            
+            const midpoint = parseOutcomeMidpoint(outcome.outcome);
+            if (midpoint === null) continue;
+            
+            const probDecimal = probability / 100;
+            totalExpected += midpoint * probDecimal;
+            hasValidData = true;
+          }
+          
+          if (hasValidData) {
+            probabilityDisplay = {
+              type: 'expectedValue',
+              value: totalExpected,
+            };
+            // Use the outcome with highest probability for currentPrice (for backward compatibility)
+            const highestProbOutcome = outcomesWithPrices.reduce((max, o) => 
+              (o.currentPrice?.implied_probability || 0) > (max.currentPrice?.implied_probability || 0) ? o : max
+            );
+            currentPrice = highestProbOutcome.currentPrice;
+          }
+        } else {
+          // For discrete markets, find highest probability outcome
+          if (outcomesWithPrices.length > 0) {
+            const highestProbOutcome = outcomesWithPrices.reduce((max, o) => 
+              (o.currentPrice?.implied_probability || 0) > (max.currentPrice?.implied_probability || 0) ? o : max
+            );
+            
+            if (highestProbOutcome.currentPrice?.implied_probability !== undefined) {
+              probabilityDisplay = {
+                type: 'highestProbability',
+                value: highestProbOutcome.currentPrice.implied_probability,
+                outcome: highestProbOutcome.outcome,
+              };
+              currentPrice = highestProbOutcome.currentPrice;
+            }
+          }
+        }
+
+        // Fallback: use first outcome if no probability display calculated
+        if (!currentPrice && outcomesWithPrices.length > 0) {
+          currentPrice = outcomesWithPrices[0].currentPrice;
         }
 
         return {
           ...market,
           currentPrice,
+          probabilityDisplay,
         };
       })
     );

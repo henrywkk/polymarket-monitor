@@ -43,9 +43,21 @@ apiClient.interceptors.request.use(
 
 // Add response interceptor for error handling
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful responses in development
+    if (import.meta.env.DEV) {
+      console.log('API Response:', response.status, response.config.url, response.data);
+    }
+    return response;
+  },
   (error) => {
-    console.error('API Response Error:', error.response?.status, error.response?.data || error.message);
+    console.error('API Response Error:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+      url: error.config?.url,
+    });
     return Promise.reject(error);
   }
 );

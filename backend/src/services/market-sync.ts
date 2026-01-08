@@ -605,22 +605,24 @@ export class MarketSyncService {
         await this.ingestionService.upsertOutcome(outcome);
 
         // If outcome has an initial price, store it in price_history
-        if (pmOutcome.price !== undefined && pmOutcome.price !== null) {
-          const price = Number(pmOutcome.price);
-          if (!isNaN(price)) {
-            // We'll use the price as mid, and set tiny spread for initial data
-            // Implied probability is price * 100
-            await this.ingestionService.handlePriceEvent({
-              type: 'price_changed',
-              market: marketId,
-              outcome: outcomeId,
-              price: {
-                bid: price * 0.99,
-                ask: price * 1.01
-              },
-              timestamp: Date.now()
-            });
-          }
+        // We also want to capture a default price (e.g. 0.5) if no price is provided
+        // to ensure the outcome is visible in the highest probability calculation
+        const initialPrice = pmOutcome.price !== undefined && pmOutcome.price !== null
+          ? Number(pmOutcome.price)
+          : (isBinaryMarket ? 0.5 : (1 / outcomesWithTokens.length));
+
+        if (!isNaN(initialPrice)) {
+          // We'll use the price as mid, and set tiny spread for initial data
+          await this.ingestionService.handlePriceEvent({
+            type: 'price_changed',
+            market: marketId,
+            outcome: outcomeId,
+            price: {
+              bid: initialPrice * 0.99,
+              ask: initialPrice * 1.01
+            },
+            timestamp: Date.now()
+          });
         }
       }
     } else if (pmMarket.conditionId || pmMarket.questionId || pmMarket.tokenId) {

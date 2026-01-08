@@ -291,14 +291,29 @@ export const MarketList = () => {
       }
     }
     
-    // Fallback to currentPrice for backward compatibility
+    // Fallback: search for the leading outcome manually if probabilityDisplay is missing
+    if (market.outcomes && market.outcomes.length > 0) {
+      const highestProbOutcome = market.outcomes.reduce((max: any, o: any) => 
+        (o.currentPrice?.implied_probability || 0) > (max.currentPrice?.implied_probability || 0) ? o : max
+      , market.outcomes[0]);
+
+      if (highestProbOutcome) {
+        return {
+          value: Number(highestProbOutcome.currentPrice?.implied_probability || 50),
+          label: 'Probability',
+          outcome: highestProbOutcome.outcome
+        };
+      }
+    }
+
+    // Secondary Fallback to currentPrice for backward compatibility
     if (market.currentPrice?.implied_probability !== undefined && market.currentPrice.implied_probability !== null) {
       const value = Number(market.currentPrice.implied_probability);
       if (!isNaN(value)) {
         return {
           value,
           label: 'Probability',
-          outcome: (market as any).probabilityDisplay?.outcome, // Try to get outcome from display object if it exists
+          outcome: (market as any).probabilityDisplay?.outcome || market.currentPrice.outcome,
         };
       }
     }

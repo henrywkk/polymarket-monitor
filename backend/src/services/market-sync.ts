@@ -478,7 +478,14 @@ export class MarketSyncService {
     }
 
     // If outcomes don't have token_ids, try to fetch them from API
-    let outcomesWithTokens = pmMarket.outcomes || [];
+    let outcomesWithTokens: Array<{
+      id?: string;
+      tokenId?: string;
+      outcome: string;
+      price?: string | number;
+      volume?: string | number;
+      volume24h?: string | number;
+    }> = pmMarket.outcomes || [];
     
     // NEW: Check if this market has nested sub-markets (common for multi-outcome/bucket markets in Gamma /events)
     // If it does, we can extract the bucket names and token IDs directly without an extra API call
@@ -511,11 +518,17 @@ export class MarketSyncService {
         }
         
         if (bucketName && tokenIds.length > 0) {
+          // Extract volume
+          const outcomeVolume = subMarket.volumeNum || (subMarket.volume ? parseFloat(String(subMarket.volume)) : 0);
+          const outcomeVolume24h = subMarket.volume24hr || (subMarket.volume24h ? parseFloat(String(subMarket.volume24h)) : 0);
+
           extractedOutcomes.push({
             id: tokenIds[0],
             tokenId: tokenIds[0],
             outcome: bucketName,
-            price: undefined
+            price: undefined,
+            volume: outcomeVolume,
+            volume24h: outcomeVolume24h
           });
         }
       }
@@ -538,14 +551,18 @@ export class MarketSyncService {
           outcomesWithTokens = pmMarket.outcomes.map((outcome, index) => ({
             ...outcome,
             tokenId: tokens[index]?.token_id || outcome.tokenId || '',
+            volume: outcome.volume || tokens[index]?.volume || 0,
+            volume24h: outcome.volume24h || tokens[index]?.volume24h || 0,
           }));
         } else {
           // Create outcomes from tokens
-          outcomesWithTokens = tokens.map((token: { token_id: string; outcome: string }) => ({
+          outcomesWithTokens = tokens.map((token: { token_id: string; outcome: string; volume?: number; volume24h?: number }) => ({
             id: token.token_id,
             tokenId: token.token_id,
             outcome: token.outcome || '',
             price: undefined,
+            volume: token.volume || 0,
+            volume24h: token.volume24h || 0
           }));
         }
       }

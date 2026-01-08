@@ -31,12 +31,16 @@ export interface PolymarketMarketRaw {
     token_id?: string;
     outcome?: string;
     price?: string;
+    volume?: string;
+    volume24h?: string;
     winner?: boolean;
   }>;
   outcomes?: Array<{
     id?: string;
     outcome: string;
     price?: string;
+    volume?: string;
+    volume24h?: string;
   }>;
   tokenId?: string;
   category?: string;
@@ -63,6 +67,8 @@ export interface PolymarketMarket {
     tokenId?: string;
     outcome: string;
     price?: string;
+    volume?: number;
+    volume24h?: number;
   }>;
   tokenId?: string;
   category?: string;
@@ -102,7 +108,13 @@ function normalizeMarket(raw: PolymarketMarketRaw): PolymarketMarket {
         volume: token.volume ? parseFloat(String(token.volume)) : undefined,
         volume24h: token.volume24h ? parseFloat(String(token.volume24h)) : undefined,
       }))
-    : raw.outcomes || [];
+    : (raw.outcomes || []).map(o => ({
+        id: o.id,
+        outcome: o.outcome,
+        price: o.price,
+        volume: o.volume ? parseFloat(String(o.volume)) : undefined,
+        volume24h: o.volume24h ? parseFloat(String(o.volume24h)) : undefined,
+      }));
 
   // Gamma API may use different field names - check multiple possibilities
   const question = raw.question || raw.title || raw.name || raw.eventTitle || 

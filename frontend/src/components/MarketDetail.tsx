@@ -62,10 +62,10 @@ export const MarketDetail = () => {
   
   if (priceUpdate) {
     // Only use priceUpdate if it matches the primary outcome (Yes for Yes/No markets)
-    // For now, we'll use it if available, but prefer outcome-specific prices
+    // Check if the update's outcomeId matches the primary outcome's tokenId or id
     const updateMatchesOutcome = primaryOutcome && 
       (priceUpdate.outcomeId === primaryOutcome.id || 
-       priceUpdate.outcomeId === primaryOutcome.tokenId);
+       priceUpdate.outcomeId === primaryOutcome.token_id);
     
     if (updateMatchesOutcome) {
       currentPrice = {

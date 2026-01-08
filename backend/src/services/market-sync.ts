@@ -300,6 +300,21 @@ export class MarketSyncService {
         console.log(`Smart sync: ${synced} updated, ${skipped} skipped (no changes)`);
       }
 
+      // Special handling: force update for specific multi-outcome markets if requested
+      // or if they are currently showing only one outcome
+      console.log(`[Sync] Performing deep sync for multi-outcome markets...`);
+      const multiOutcomeMarkets = allMarkets.filter(m => 
+        (m.markets && m.markets.length > 1) || 
+        (m.outcomes && m.outcomes.length > 2)
+      );
+      
+      for (const m of multiOutcomeMarkets) {
+        const id = m.conditionId || m.questionId || m.id || '';
+        if (id) {
+          await this.syncMarket(m);
+        }
+      }
+
       console.log(`Successfully synced ${synced}/${allMarkets.length} markets`);
       
       // After syncing markets, subscribe to WebSocket updates for active markets
@@ -464,6 +479,53 @@ export class MarketSyncService {
 
     // If outcomes don't have token_ids, try to fetch them from API
     let outcomesWithTokens = pmMarket.outcomes || [];
+    
+    // NEW: Check if this market has nested sub-markets (common for multi-outcome/bucket markets in Gamma /events)
+    // If it does, we can extract the bucket names and token IDs directly without an extra API call
+    if (outcomesWithTokens.length === 0 && pmMarket.markets && Array.isArray(pmMarket.markets) && pmMarket.markets.length > 0) {
+      console.log(`[Sync] Market ${marketId} has ${pmMarket.markets.length} nested markets. Extracting bucket outcomes...`);
+      const extractedOutcomes = [];
+      
+      for (const subMarket of pmMarket.markets) {
+        // The bucket name is usually in groupItemTitle, fallback to question or title
+        let bucketName = subMarket.groupItemTitle || subMarket.question || subMarket.title || '';
+        
+        // Clean up bucket name (remove parent question prefix if present)
+        // e.g., "Bitcoin price on January 8? <78,000" -> "<78,000"
+        if (bucketName && question && bucketName.startsWith(question)) {
+          bucketName = bucketName.replace(question, '').replace(/^\W+/, '');
+        }
+        
+        // Get token IDs from clobTokenIds (can be a JSON string or array)
+        let tokenIds: string[] = [];
+        if (subMarket.clobTokenIds) {
+          if (typeof subMarket.clobTokenIds === 'string') {
+            try {
+              tokenIds = JSON.parse(subMarket.clobTokenIds);
+            } catch (e) {
+              tokenIds = [];
+            }
+          } else if (Array.isArray(subMarket.clobTokenIds)) {
+            tokenIds = subMarket.clobTokenIds;
+          }
+        }
+        
+        if (bucketName && tokenIds.length > 0) {
+          extractedOutcomes.push({
+            id: tokenIds[0],
+            tokenId: tokenIds[0],
+            outcome: bucketName,
+            price: undefined
+          });
+        }
+      }
+      
+      if (extractedOutcomes.length > 0) {
+        outcomesWithTokens = extractedOutcomes;
+        console.log(`[Sync] Successfully extracted ${extractedOutcomes.length} bucket outcomes for ${marketId}`);
+      }
+    }
+
     // Try conditionId, questionId, or id
     const idToUse = pmMarket.conditionId || pmMarket.questionId || pmMarket.id;
     if (idToUse && (!pmMarket.outcomes || pmMarket.outcomes.length === 0 || pmMarket.outcomes.every(o => !o.tokenId))) {

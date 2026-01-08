@@ -115,6 +115,7 @@ function normalizeMarket(raw: PolymarketMarketRaw): PolymarketMarket {
     liquidity: raw.liquidity,
     volume: raw.volume,
     volume24h: raw.volume24hr || raw.volume24h || raw['24hr_volume'] || undefined,
+    markets: raw.markets, // Pass through nested markets for multi-outcome events
   };
 }
 

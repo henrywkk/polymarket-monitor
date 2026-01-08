@@ -170,9 +170,9 @@ export const MarketDetail = () => {
                   <span className="font-semibold text-gray-900">
                     {outcome.outcome}
                   </span>
-                  {outcome.currentPrice && (
+                  {outcome.currentPrice && outcome.currentPrice.implied_probability !== undefined && outcome.currentPrice.implied_probability !== null && (
                     <span className="text-primary-600 font-bold">
-                      {outcome.currentPrice.implied_probability.toFixed(1)}%
+                      {Number(outcome.currentPrice.implied_probability).toFixed(1)}%
                     </span>
                   )}
                 </div>

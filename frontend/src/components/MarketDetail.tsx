@@ -221,19 +221,19 @@ export const MarketDetail = () => {
               <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">24H Volume</p>
                 <p className="text-3xl font-black text-white">
-                  {formatVolume((market as any).volume24h)}
+                  {formatVolume(Number((market as any).volume24h))}
                 </p>
               </div>
               <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Total Volume</p>
                 <p className="text-3xl font-black text-white">
-                  {formatVolume((market as any).volume)}
+                  {formatVolume(Number((market as any).volume))}
                 </p>
               </div>
               <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Liquidity Score</p>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Liquidity</p>
                 <p className="text-3xl font-black text-blue-400">
-                  {((market as any).liquidityScore || 0).toFixed(1)}%
+                  {formatVolume(Number((market as any).liquidityScore))}
                 </p>
               </div>
             </div>

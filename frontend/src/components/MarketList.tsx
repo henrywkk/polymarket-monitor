@@ -260,8 +260,8 @@ export const MarketList = () => {
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Probability</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Vol (24h)</th>
-                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Liquidity</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-center">Category</th>
+                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Liquidity</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Status</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Action</th>
                   </tr>
@@ -318,9 +318,7 @@ export const MarketList = () => {
                         </td>
                         <td className="px-8 py-6 text-right">
                           <div className="text-slate-300 text-sm font-mono font-semibold">
-                            {market.liquidityScore !== undefined && market.liquidityScore !== null
-                              ? `${Number(market.liquidityScore).toFixed(1)}%`
-                              : 'N/A'}
+                            {formatVolume(market.liquidityScore)}
                           </div>
                         </td>
                         <td className="px-8 py-6 text-right">

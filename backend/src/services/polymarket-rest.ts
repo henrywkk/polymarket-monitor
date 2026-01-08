@@ -354,8 +354,8 @@ export class PolymarketRestClient {
             return {
               token_id: t.token_id || t.asset_id || t.id,
               outcome: t.outcome || t.label || t.name || t.title || '',
-              price: !isNaN(price as number) ? price : undefined,
-            };
+              price: !isNaN(price as number) ? (price as number) : undefined,
+            } as MarketToken;
           }).filter(t => t.token_id);
           
           if (result.length > 0) {
@@ -419,11 +419,12 @@ export class PolymarketRestClient {
 
               // Create one outcome per bucket using the first token ID
               // The bucket name (e.g., "<0.5%") is what we want to display
-              allTokens.push({
+              const token: MarketToken = {
                 token_id: tokenIds[0], // Use first token (Yes token)
                 outcome: bucketName, // Use bucket name instead of Yes/No
-                price: !isNaN(price as number) ? price : undefined,
-              });
+                price: !isNaN(price as number) ? (price as number) : undefined,
+              };
+              allTokens.push(token);
             } else if (bucketName) {
               // If we have bucket name but no token IDs, we still want to store the bucket
               // We'll need to fetch token IDs separately using conditionId

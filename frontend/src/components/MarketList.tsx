@@ -146,7 +146,9 @@ const MarketRow = ({
       </td>
       <td className="px-8 py-6 text-right">
         <div className="text-slate-300 text-sm font-mono font-semibold">
-          {formatVolume(market.liquidityScore)}
+          {market.liquidityScore !== undefined && market.liquidityScore !== null 
+            ? Number(market.liquidityScore).toFixed(1)
+            : 'N/A'}
         </div>
       </td>
       <td className="px-8 py-6 text-right">
@@ -341,10 +343,16 @@ export const MarketList = () => {
     const diff = date.getTime() - now.getTime();
     const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
     
-    if (days < 0) return 'Ended';
-    if (days === 0) return 'Ends today';
-    if (days === 1) return 'Ends tomorrow';
-    return `Ends in ${days} days`;
+    // Don't mark as "Ended" - end_date is just an estimate
+    // Polymarket can extend markets by adding new outcomes
+    if (days < 0) {
+      // Show how many days past the estimated end date
+      const daysPast = Math.abs(days);
+      return `Est. end ${daysPast}d ago`;
+    }
+    if (days === 0) return 'Est. ends today';
+    if (days === 1) return 'Est. ends tomorrow';
+    return `Est. ends in ${days} days`;
   };
 
   if (isLoading && !data) {

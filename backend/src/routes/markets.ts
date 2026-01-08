@@ -366,6 +366,11 @@ router.get('/', async (req: Request, res: Response) => {
     params.push(limit, offset);
     const marketsResult = await query(marketsQuery, params);
 
+    // Calculate liquidity scores for all markets in this page
+    const marketIds = marketsResult.rows.map((row: Market) => row.id);
+    const { calculateLiquidityScores } = await import('../utils/liquidity');
+    const liquidityScores = await calculateLiquidityScores(marketIds);
+
     // Helper function to check if outcome looks like a bucket (continuous range)
     const isBucketOutcome = (outcome: string): boolean => {
       const lower = outcome.toLowerCase();
@@ -536,6 +541,7 @@ router.get('/', async (req: Request, res: Response) => {
           ...market,
           currentPrice,
           probabilityDisplay,
+          liquidityScore: liquidityScores.get(market.id) || 0,
         };
       })
     );

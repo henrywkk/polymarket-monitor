@@ -41,15 +41,26 @@ export const MarketList = () => {
     sortBy,
   });
 
-  // Check WebSocket connection status
+  // Initialize WebSocket connection and check status
   useEffect(() => {
+    // Connect WebSocket on mount
+    wsService.connect();
+    
     const checkConnection = () => {
-      setConnectionStatus(wsService.isConnected() ? 'online' : 'offline');
+      const isConnected = wsService.isConnected();
+      setConnectionStatus(isConnected ? 'online' : 'offline');
     };
     
+    // Check immediately
     checkConnection();
+    
+    // Check every 2 seconds
     const interval = setInterval(checkConnection, 2000);
-    return () => clearInterval(interval);
+    
+    return () => {
+      clearInterval(interval);
+      // Don't disconnect on unmount - other components might be using it
+    };
   }, []);
 
   const handleSearchChange = useCallback((value: string) => {
@@ -72,17 +83,31 @@ export const MarketList = () => {
     if (!data?.data) return { total: 0, active: 0, avgLiquidity: 0 };
     
     const markets = data.data;
+    
+    // Active markets = markets that haven't ended (from current page only)
+    // Note: This is a limitation - we only count active markets from the current page
+    // For true active count, we'd need a separate API endpoint
     const activeMarkets = markets.filter(m => {
       if (!m.end_date) return true;
       return new Date(m.end_date) > new Date();
     });
     
-    // Calculate average liquidity (placeholder - will use actual liquidity scores later)
-    const avgLiquidity = 0;
+    // Calculate average liquidity from markets that have liquidityScore
+    const marketsWithLiquidity = markets.filter(m => 
+      (m as any).liquidityScore !== undefined && (m as any).liquidityScore !== null
+    );
+    
+    let avgLiquidity = 0;
+    if (marketsWithLiquidity.length > 0) {
+      const totalLiquidity = marketsWithLiquidity.reduce((sum, m) => 
+        sum + ((m as any).liquidityScore || 0), 0
+      );
+      avgLiquidity = totalLiquidity / marketsWithLiquidity.length;
+    }
 
     return {
-      total: data.pagination.total,
-      active: activeMarkets.length,
+      total: data.pagination.total, // Total markets in database
+      active: activeMarkets.length, // Active markets in current page (limited)
       avgLiquidity: Math.round(avgLiquidity),
     };
   }, [data]);

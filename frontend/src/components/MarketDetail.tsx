@@ -58,7 +58,22 @@ export const MarketDetail = () => {
   };
 
   const primaryOutcome = market.outcomes?.[0];
-  const currentPrice = priceUpdate || primaryOutcome?.currentPrice;
+  
+  // Normalize price data - handle both PriceUpdate (camelCase) and API response (snake_case)
+  let currentPrice: { bid_price: number; ask_price: number; mid_price: number; implied_probability: number } | undefined;
+  
+  if (priceUpdate) {
+    // Convert PriceUpdate (camelCase) to API format (snake_case)
+    currentPrice = {
+      bid_price: priceUpdate.bidPrice,
+      ask_price: priceUpdate.askPrice,
+      mid_price: priceUpdate.midPrice,
+      implied_probability: priceUpdate.impliedProbability,
+    };
+  } else {
+    // Use API response format (already snake_case)
+    currentPrice = primaryOutcome?.currentPrice;
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">

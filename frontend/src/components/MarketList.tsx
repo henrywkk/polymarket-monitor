@@ -3,6 +3,7 @@ import { Search, ExternalLink, TrendingUp, Activity, Server } from 'lucide-react
 import { useMarkets } from '../hooks/useMarkets';
 import { Link } from 'react-router-dom';
 import { wsService } from '../services/websocket';
+import { Market } from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRealtimePrice } from '../hooks/useRealtimePrice';
 import { getPrimaryOutcome } from '../utils/market-calculations';

@@ -351,62 +351,90 @@ export class PolymarketRestClient {
         // 2. Check for nested markets (common in Gamma /events)
         // For multi-outcome markets, the event might have multiple sub-markets
         // Each sub-market represents a bucket (e.g., "<0.5%", "0.5-1.0%")
-        // and has Yes/No tokens. We need to extract the bucket name from the sub-market's question.
+        // The bucket name is in groupItemTitle field, and tokens are in clobTokenIds
         if (data.markets && Array.isArray(data.markets) && data.markets.length > 0) {
           console.log(`[Sync] Found ${data.markets.length} nested markets in event. Structure:`, {
             eventQuestion: data.question || data.title,
             markets: data.markets.map((m: any) => ({
               question: m.question || m.title,
-              conditionId: m.condition_id || m.conditionId,
-              tokenCount: (m.tokens || m.outcomes || []).length,
+              groupItemTitle: m.groupItemTitle, // This is the bucket name!
+              conditionId: m.conditionId || m.condition_id,
+              clobTokenIds: m.clobTokenIds ? (typeof m.clobTokenIds === 'string' ? JSON.parse(m.clobTokenIds) : m.clobTokenIds) : [],
             })),
           });
           
           // For multi-outcome markets, collect all sub-markets with their bucket names
-          const allTokens: Array<{ token_id: string; outcome: string; bucketName?: string }> = [];
+          const allTokens: Array<{ token_id: string; outcome: string }> = [];
           
           for (const subMarket of data.markets) {
-            const marketTokens = subMarket.tokens || subMarket.outcomes;
-            const bucketName = subMarket.question || subMarket.title || subMarket.label || '';
+            // Get bucket name from groupItemTitle (e.g., "<0.5%", "0.5-1.0%", ">2.5%")
+            const bucketName = subMarket.groupItemTitle || subMarket.question || subMarket.title || '';
             
-            if (marketTokens && Array.isArray(marketTokens)) {
-              const subMarketTokens = marketTokens.map((t: any) => ({
-                token_id: t.token_id || t.asset_id || t.id,
-                outcome: t.outcome || t.label || t.name || '',
-                bucketName: bucketName, // Store bucket name from sub-market question
-              })).filter(t => t.token_id);
-              
-              allTokens.push(...subMarketTokens);
+            // Get token IDs from clobTokenIds (JSON string array)
+            let tokenIds: string[] = [];
+            if (subMarket.clobTokenIds) {
+              if (typeof subMarket.clobTokenIds === 'string') {
+                try {
+                  tokenIds = JSON.parse(subMarket.clobTokenIds);
+                } catch (e) {
+                  // If parsing fails, try to extract as array
+                  tokenIds = Array.isArray(subMarket.clobTokenIds) ? subMarket.clobTokenIds : [];
+                }
+              } else if (Array.isArray(subMarket.clobTokenIds)) {
+                tokenIds = subMarket.clobTokenIds;
+              }
+            }
+            
+            // If we have bucket name and token IDs, create outcomes
+            if (bucketName && tokenIds.length > 0) {
+              // For each token ID, create an outcome with the bucket name
+              // Note: Each sub-market typically has 2 tokens (Yes/No), but we store the bucket name
+              for (const tokenId of tokenIds) {
+                allTokens.push({
+                  token_id: tokenId,
+                  outcome: bucketName, // Use bucket name instead of Yes/No
+                });
+              }
+            } else if (bucketName) {
+              // If we have bucket name but no token IDs, we still want to store the bucket
+              // We'll need to fetch token IDs separately using conditionId
+              if (subMarket.conditionId) {
+                console.log(`[Sync] Found bucket "${bucketName}" but no token IDs. Will fetch from conditionId ${subMarket.conditionId}`);
+                // For now, we'll return what we have and let the caller handle it
+              }
             }
           }
           
           if (allTokens.length > 0) {
             console.log(`[Sync] Extracted ${allTokens.length} tokens from ${data.markets.length} sub-markets`);
-            // Log bucket names if found
-            const uniqueBuckets = [...new Set(allTokens.map(t => t.bucketName).filter(Boolean))];
+            // Log unique bucket names
+            const uniqueBuckets = [...new Set(allTokens.map(t => t.outcome).filter(Boolean))];
             if (uniqueBuckets.length > 0) {
               console.log(`[Sync] Bucket names found:`, uniqueBuckets);
             }
-            return allTokens.map(t => ({
-              token_id: t.token_id,
-              outcome: t.bucketName || t.outcome, // Prefer bucket name over Yes/No
-            }));
+            return allTokens;
           }
           
-          // Fallback: check first market only
+          // Fallback: if we have bucket names but no token IDs, try to get tokens from conditionId
+          // This might happen if clobTokenIds is not available
           const firstMarket = data.markets[0];
-          const firstMarketTokens = firstMarket.tokens || firstMarket.outcomes;
-          if (firstMarketTokens && Array.isArray(firstMarketTokens)) {
-            return firstMarketTokens.map((t: any) => ({
-              token_id: t.token_id || t.asset_id || t.id,
-              outcome: t.outcome || t.label || t.name || '',
-            })).filter(t => t.token_id);
-          }
-          
-          // If no tokens in market object, maybe it has a conditionId we can use
           if (firstMarket.conditionId && firstMarket.conditionId !== id) {
             console.log(`[Sync] Found conditionId ${firstMarket.conditionId} in event. Recursive call...`);
-            return this.fetchMarketTokens(firstMarket.conditionId);
+            const tokens = await this.fetchMarketTokens(firstMarket.conditionId);
+            // If we got tokens, map them to bucket names
+            if (tokens.length > 0 && data.markets.length > 0) {
+              // Map tokens to their corresponding bucket
+              const tokensWithBuckets = tokens.map((token, idx) => {
+                const marketIdx = Math.floor(idx / 2); // Assuming 2 tokens per market (Yes/No)
+                const bucketName = data.markets[marketIdx]?.groupItemTitle || token.outcome;
+                return {
+                  token_id: token.token_id,
+                  outcome: bucketName,
+                };
+              });
+              return tokensWithBuckets;
+            }
+            return tokens;
           }
         }
       } catch (error) {

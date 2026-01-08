@@ -82,6 +82,13 @@ export class PeriodicSyncService {
       this.stats.lastSyncCount = synced;
       this.stats.totalSyncs++;
 
+      // Run maintenance tasks (like pruning) every 6 hours
+      // Assuming 5-minute interval, 72 syncs = 6 hours
+      if (this.stats.totalSyncs % 72 === 0) {
+        console.log('[Periodic Sync] Running maintenance tasks...');
+        await this.syncService.ingestionService.pruneOldHistory(7); // Keep 7 days
+      }
+
       console.log(`[Periodic Sync] Completed: ${synced} markets synced in ${duration}ms`);
     } catch (error) {
       console.error('[Periodic Sync] Error during sync:', error);

@@ -5,7 +5,7 @@ import { query } from '../config/database';
 
 export class MarketSyncService {
   private restClient: PolymarketRestClient;
-  private ingestionService: MarketIngestionService;
+  public ingestionService: MarketIngestionService;
 
   constructor(
     restClient: PolymarketRestClient,

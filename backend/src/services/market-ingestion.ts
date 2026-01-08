@@ -9,6 +9,9 @@ export class MarketIngestionService {
   private wsClient: PolymarketWebSocketClient;
   private wsServer?: WebSocketServer;
   private activeMarkets = new Map<string, Set<string>>(); // marketId -> Set of outcomeIds
+  private lastPersistedPrices = new Map<string, { price: number; timestamp: number }>(); // outcomeId -> { price, timestamp }
+  private PERSIST_INTERVAL_MS = 60000; // Persist at most once per minute per outcome
+  private PRICE_CHANGE_THRESHOLD = 0.01; // OR if price changes by more than 1%
 
   constructor(wsClient: PolymarketWebSocketClient, wsServer?: WebSocketServer) {
     this.wsClient = wsClient;
@@ -154,15 +157,30 @@ export class MarketIngestionService {
       await redis.hset(`market:${marketId}:prices`, outcome.token_id, JSON.stringify(lastPrice));
       await redis.expire(`market:${marketId}:prices`, 3600);
 
-      // Store price history in database
-      await this.storePriceHistory({
-        marketId,
-        outcomeId: outcome.id,
-        bidPrice: price.bid,
-        askPrice: price.ask,
-        midPrice,
-        impliedProbability,
-      });
+      // Throttled price history persistence
+      const now = Date.now();
+      const lastPersisted = this.lastPersistedPrices.get(outcome.id);
+      const priceChangedSignificantly = !lastPersisted || 
+        Math.abs((midPrice - lastPersisted.price) / lastPersisted.price) > this.PRICE_CHANGE_THRESHOLD;
+      const intervalPassed = !lastPersisted || (now - lastPersisted.timestamp) > this.PERSIST_INTERVAL_MS;
+
+      if (priceChangedSignificantly || intervalPassed) {
+        // Store price history in database
+        await this.storePriceHistory({
+          marketId,
+          outcomeId: outcome.id,
+          bidPrice: price.bid,
+          askPrice: price.ask,
+          midPrice,
+          impliedProbability,
+        });
+        
+        // Update last persisted state
+        this.lastPersistedPrices.set(outcome.id, {
+          price: midPrice,
+          timestamp: now
+        });
+      }
 
       // Track active market
       if (!this.activeMarkets.has(marketId)) {
@@ -294,6 +312,26 @@ export class MarketIngestionService {
    */
   getActiveMarkets(): string[] {
     return Array.from(this.activeMarkets.keys());
+  }
+
+  /**
+   * Prune old price history records to save storage space
+   * Default: keeps data for the last 7 days
+   */
+  async pruneOldHistory(daysToKeep: number = 7): Promise<number> {
+    try {
+      console.log(`Pruning price history older than ${daysToKeep} days...`);
+      const result = await query(
+        "DELETE FROM price_history WHERE timestamp < NOW() - ($1 || ' days')::INTERVAL",
+        [daysToKeep]
+      );
+      const prunedCount = result.rowCount || 0;
+      console.log(`Pruned ${prunedCount} old price history records.`);
+      return prunedCount;
+    } catch (error) {
+      console.error('Error pruning price history:', error);
+      return 0;
+    }
   }
 }
 

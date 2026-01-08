@@ -73,10 +73,15 @@ const startServer = async () => {
     await pool.query('SELECT NOW()');
     console.log('Database connected successfully');
     
-    // Initialize database tables
-    await initializeDatabase();
+        // Initialize database tables
+        await initializeDatabase();
 
-    // Sync markets from Polymarket API (non-blocking)
+        // Run initial data maintenance (prune old history)
+        marketIngestion.pruneOldHistory(7).catch(err => {
+          console.error('Error during initial pruning:', err);
+        });
+
+        // Sync markets from Polymarket API (non-blocking)
     // Fetch more markets to ensure we get diverse categories including crypto
     marketSync.syncMarkets(500).catch((error: unknown) => {
       console.error('Error during initial market sync:', error);

@@ -12,6 +12,7 @@ export interface Market {
 export interface MarketWithOutcomes extends Market {
   outcomes?: Outcome[];
   currentPrice?: PriceData;
+  liquidityScore?: number; // 0-100 liquidity score
 }
 
 export interface Outcome {

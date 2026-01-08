@@ -6,6 +6,8 @@ import { pool } from './config/database';
 import { logger } from './middleware/logger';
 import healthRoutes, { setWebSocketClient } from './routes/health';
 import marketsRoutes from './routes/markets';
+import categoriesRoutes from './routes/categories';
+import statsRoutes from './routes/stats';
 import syncRoutes, { setSyncService } from './routes/sync';
 import { PolymarketWebSocketClient } from './services/polymarket-client';
 import { MarketIngestionService } from './services/market-ingestion';
@@ -33,6 +35,8 @@ app.use(logger);
 // Routes
 app.use('/api/health', healthRoutes);
 app.use('/api/markets', marketsRoutes);
+app.use('/api/categories', categoriesRoutes);
+app.use('/api/stats', statsRoutes);
 app.use('/api/sync', syncRoutes);
 
 // Error handling middleware

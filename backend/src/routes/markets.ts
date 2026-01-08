@@ -4,6 +4,7 @@ import { query } from '../config/database';
 import { Market, MarketWithOutcomes, Outcome } from '../models/Market';
 import { cacheService } from '../services/cache-service';
 import { redis } from '../config/redis';
+import { calculateLiquidityScore } from '../utils/liquidity';
 
 const router = Router();
 
@@ -46,7 +47,27 @@ router.get('/', async (req: Request, res: Response) => {
 
     let orderBy = 'ORDER BY updated_at DESC';
     if (sortBy === 'liquidity') {
-      orderBy = 'ORDER BY updated_at DESC'; // TODO: Add liquidity calculation
+      // Calculate liquidity scores and sort by them
+      // We'll use a subquery to calculate liquidity based on recent price activity
+      orderBy = `ORDER BY (
+        SELECT COALESCE(
+          (
+            LEAST(COUNT(*)::numeric / 100 * 40, 40) + -- Frequency score
+            GREATEST(0, 30 * (1 - AVG(ask_price - bid_price) * 10)) + -- Spread score
+            LEAST(COUNT(DISTINCT outcome_id)::numeric * 10, 20) + -- Outcomes score
+            CASE 
+              WHEN MAX(timestamp) > NOW() - INTERVAL '1 hour' THEN 10
+              WHEN MAX(timestamp) > NOW() - INTERVAL '6 hours' THEN 5
+              WHEN MAX(timestamp) > NOW() - INTERVAL '24 hours' THEN 2
+              ELSE 0
+            END
+          ) / 10,
+          0
+        )
+        FROM price_history
+        WHERE market_id = markets.id
+          AND timestamp >= NOW() - INTERVAL '24 hours'
+      ) DESC NULLS LAST, updated_at DESC`;
     } else if (sortBy === 'endingSoon') {
       orderBy = 'ORDER BY end_date ASC NULLS LAST';
     }
@@ -160,9 +181,13 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     const outcomesWithPrices = await Promise.all(pricesPromises);
 
+    // Calculate liquidity score
+    const liquidityScore = await calculateLiquidityScore(id);
+
     const marketWithOutcomes: MarketWithOutcomes = {
       ...market,
       outcomes: outcomesWithPrices,
+      liquidityScore, // Add liquidity score to response
     };
 
     // Cache the result

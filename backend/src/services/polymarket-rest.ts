@@ -385,16 +385,16 @@ export class PolymarketRestClient {
               }
             }
             
-            // If we have bucket name and token IDs, create outcomes
+            // If we have bucket name and token IDs, create one outcome per bucket
+            // Each sub-market typically has 2 tokens (Yes/No), but we store the bucket name
+            // We'll use the first token ID (typically the "Yes" token)
             if (bucketName && tokenIds.length > 0) {
-              // For each token ID, create an outcome with the bucket name
-              // Note: Each sub-market typically has 2 tokens (Yes/No), but we store the bucket name
-              for (const tokenId of tokenIds) {
-                allTokens.push({
-                  token_id: tokenId,
-                  outcome: bucketName, // Use bucket name instead of Yes/No
-                });
-              }
+              // Create one outcome per bucket using the first token ID
+              // The bucket name (e.g., "<0.5%") is what we want to display
+              allTokens.push({
+                token_id: tokenIds[0], // Use first token (Yes token)
+                outcome: bucketName, // Use bucket name instead of Yes/No
+              });
             } else if (bucketName) {
               // If we have bucket name but no token IDs, we still want to store the bucket
               // We'll need to fetch token IDs separately using conditionId

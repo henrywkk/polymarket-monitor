@@ -2,7 +2,6 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Clock, TrendingUp, ExternalLink } from 'lucide-react';
 import { useMarketDetail } from '../hooks/useMarketDetail';
 import { useRealtimePrice } from '../hooks/useRealtimePrice';
-import { PriceChart } from './PriceChart';
 import { 
   isBinaryMarket, 
   calculateExpectedValue, 
@@ -148,43 +147,66 @@ export const MarketDetail = () => {
         </h1>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
-              {isBinary ? 'Implied Probability' : expectedValue !== null ? 'Expected Value' : 'Primary Outcome Probability'}
-            </p>
-            <p className="text-4xl font-black text-blue-400">
-              {expectedValue !== null 
-                ? `${expectedValue.toFixed(2)}%`
-                : currentPrice?.implied_probability !== undefined && currentPrice.implied_probability !== null
-                ? `${Number(currentPrice.implied_probability).toFixed(1)}%`
-                : 'N/A'}
-            </p>
-            {!isBinary && primaryOutcome && (
-              <p className="text-xs text-slate-500 mt-2">
-                {expectedValue !== null 
-                  ? 'Weighted average of all outcomes'
-                  : `For: ${primaryOutcome.outcome}`}
+          {expectedValue !== null ? (
+            // Show expected value for multi-outcome markets
+            <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                Expected Value
               </p>
-            )}
-          </div>
+              <p className="text-4xl font-black text-blue-400">
+                {expectedValue.toFixed(2)}%
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Weighted average of all outcome buckets
+              </p>
+            </div>
+          ) : isBinary && currentPrice ? (
+            // Show implied probability only for binary markets
+            <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                Implied Probability
+              </p>
+              <p className="text-4xl font-black text-blue-400">
+                {Number(currentPrice.implied_probability).toFixed(1)}%
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                For: {primaryOutcome?.outcome || 'Yes'}
+              </p>
+            </div>
+          ) : null}
+          
+          {currentPrice && (
+            <>
+              <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Bid Price</p>
+                <p className="text-4xl font-black text-slate-200 font-mono">
+                  {currentPrice?.bid_price !== undefined && currentPrice.bid_price !== null
+                    ? Number(currentPrice.bid_price).toFixed(4)
+                    : 'N/A'}
+                </p>
+                {primaryOutcome && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    For: {primaryOutcome.outcome}
+                  </p>
+                )}
+              </div>
 
-          <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Bid Price</p>
-            <p className="text-4xl font-black text-slate-200 font-mono">
-              {currentPrice?.bid_price !== undefined && currentPrice.bid_price !== null
-                ? Number(currentPrice.bid_price).toFixed(4)
-                : 'N/A'}
-            </p>
-          </div>
+              <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Ask Price</p>
+                <p className="text-4xl font-black text-slate-200 font-mono">
+                  {currentPrice?.ask_price !== undefined && currentPrice.ask_price !== null
+                    ? Number(currentPrice.ask_price).toFixed(4)
+                    : 'N/A'}
+                </p>
+                {primaryOutcome && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    For: {primaryOutcome.outcome}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
 
-          <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800/60">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Ask Price</p>
-            <p className="text-4xl font-black text-slate-200 font-mono">
-              {currentPrice?.ask_price !== undefined && currentPrice.ask_price !== null
-                ? Number(currentPrice.ask_price).toFixed(4)
-                : 'N/A'}
-            </p>
-          </div>
         </div>
 
         <div className="flex items-center text-slate-400">
@@ -193,18 +215,6 @@ export const MarketDetail = () => {
         </div>
       </div>
 
-      {/* Price History Chart */}
-      <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-8 mb-6">
-        <h2 className="text-2xl font-black text-white mb-6">
-          Price History
-          {primaryOutcome && (
-            <span className="text-sm font-normal text-slate-500 ml-2">
-              ({primaryOutcome.outcome})
-            </span>
-          )}
-        </h2>
-        <PriceChart marketId={market.id} primaryOutcomeId={primaryOutcome?.id} />
-      </div>
 
       {/* Outcomes */}
       {market.outcomes && market.outcomes.length > 0 && (

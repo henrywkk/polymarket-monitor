@@ -117,6 +117,8 @@ export async function initializeDatabase(): Promise<void> {
       await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS last_trade_at TIMESTAMP');
       await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS activity_score DECIMAL(10, 5) DEFAULT 0');
       await query('ALTER TABLE outcomes ALTER COLUMN outcome TYPE VARCHAR(255)');
+      await query('ALTER TABLE outcomes ADD COLUMN IF NOT EXISTS volume DECIMAL(20, 8) DEFAULT 0');
+      await query('ALTER TABLE outcomes ADD COLUMN IF NOT EXISTS volume_24h DECIMAL(20, 8) DEFAULT 0');
       console.log('Migrations completed successfully.');
     } catch (migrationError) {
       console.error('Error running migrations:', migrationError);

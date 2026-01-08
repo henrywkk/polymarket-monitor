@@ -26,6 +26,8 @@ export interface Outcome {
   marketId: string;
   outcome: string;
   tokenId: string;
+  volume?: number;
+  volume24h?: number;
   createdAt: Date;
 }
 

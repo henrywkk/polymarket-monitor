@@ -581,6 +581,8 @@ export class MarketSyncService {
           marketId: marketId,
           outcome: pmOutcome.outcome,
           tokenId: pmOutcome.tokenId || pmOutcome.id || pmMarket.tokenId || pmMarket.conditionId || '',
+          volume: pmOutcome.volume ? parseFloat(String(pmOutcome.volume)) : 0,
+          volume24h: pmOutcome.volume24h ? parseFloat(String(pmOutcome.volume24h)) : 0,
         };
 
         await this.ingestionService.upsertOutcome(outcome);

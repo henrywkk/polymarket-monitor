@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS outcomes (
     market_id VARCHAR(255) NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
     outcome VARCHAR(255) NOT NULL, -- Increased length for bucket names
     token_id VARCHAR(255) NOT NULL,
+    volume DECIMAL(20, 8) DEFAULT 0,
+    volume_24h DECIMAL(20, 8) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(market_id, outcome)
 );

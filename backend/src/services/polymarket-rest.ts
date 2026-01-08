@@ -78,6 +78,8 @@ export interface MarketToken {
   token_id: string;
   outcome: string;
   price?: number;
+  volume?: number;
+  volume24h?: number;
 }
 
 export interface PolymarketMarketsResponse {
@@ -97,6 +99,8 @@ function normalizeMarket(raw: PolymarketMarketRaw): PolymarketMarket {
         tokenId: token.token_id,
         outcome: token.outcome || '',
         price: token.price,
+        volume: token.volume ? parseFloat(String(token.volume)) : undefined,
+        volume24h: token.volume24h ? parseFloat(String(token.volume24h)) : undefined,
       }))
     : raw.outcomes || [];
 
@@ -417,12 +421,18 @@ export class PolymarketRestClient {
                 price = parseFloat(subMarket.lastTradePrice);
               }
 
+              // Extract volume
+              const outcomeVolume = subMarket.volumeNum || (subMarket.volume ? parseFloat(String(subMarket.volume)) : undefined);
+              const outcomeVolume24h = subMarket.volume24hr || (subMarket.volume24h ? parseFloat(String(subMarket.volume24h)) : undefined);
+
               // Create one outcome per bucket using the first token ID
               // The bucket name (e.g., "<0.5%") is what we want to display
               const token: MarketToken = {
                 token_id: tokenIds[0], // Use first token (Yes token)
                 outcome: bucketName, // Use bucket name instead of Yes/No
                 price: !isNaN(price as number) ? (price as number) : undefined,
+                volume: outcomeVolume,
+                volume24h: outcomeVolume24h,
               };
               allTokens.push(token);
             } else if (bucketName) {

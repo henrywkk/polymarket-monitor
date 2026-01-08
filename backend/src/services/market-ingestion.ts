@@ -130,14 +130,23 @@ export class MarketIngestionService {
       // This allows us to update outcome names when the same token_id exists
       // with a different outcome name (e.g., "Yes" -> "<0.5%")
       await query(
-        `INSERT INTO outcomes (id, market_id, outcome, token_id)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO outcomes (id, market_id, outcome, token_id, volume, volume_24h)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (id) 
          DO UPDATE SET 
            market_id = EXCLUDED.market_id,
            outcome = EXCLUDED.outcome,
-           token_id = EXCLUDED.token_id`,
-        [outcome.id, outcome.marketId, outcome.outcome, outcome.tokenId]
+           token_id = EXCLUDED.token_id,
+           volume = EXCLUDED.volume,
+           volume_24h = EXCLUDED.volume_24h`,
+        [
+          outcome.id, 
+          outcome.marketId, 
+          outcome.outcome, 
+          outcome.tokenId,
+          outcome.volume || 0,
+          outcome.volume24h || 0
+        ]
       );
     } catch (error) {
       // If conflict on (market_id, outcome) unique constraint, try to update by that
@@ -145,9 +154,16 @@ export class MarketIngestionService {
         try {
           await query(
             `UPDATE outcomes 
-             SET id = $1, token_id = $4
+             SET id = $1, token_id = $4, volume = $5, volume_24h = $6
              WHERE market_id = $2 AND outcome = $3`,
-            [outcome.id, outcome.marketId, outcome.outcome, outcome.tokenId]
+            [
+              outcome.id, 
+              outcome.marketId, 
+              outcome.outcome, 
+              outcome.tokenId,
+              outcome.volume || 0,
+              outcome.volume24h || 0
+            ]
           );
         } catch (updateError) {
           console.error(`Error updating outcome ${outcome.id} by (market_id, outcome):`, updateError);

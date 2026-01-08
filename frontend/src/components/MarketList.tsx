@@ -94,7 +94,7 @@ export const MarketList = () => {
     
     // Calculate average volume from markets
     const totalVolume = markets.reduce((sum, m) => 
-      sum + (m.volume24h || 0), 0
+      sum + (Number(m.volume24h) || 0), 0
     );
     const avgVolume = markets.length > 0 ? totalVolume / markets.length : 0;
 

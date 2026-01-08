@@ -370,11 +370,6 @@ router.get('/', async (req: Request, res: Response) => {
     params.push(limit, offset);
     const marketsResult = await query(marketsQuery, params);
 
-    // Calculate liquidity scores for all markets in this page
-    const marketIds = marketsResult.rows.map((row: Market) => row.id);
-    const { calculateLiquidityScores } = await import('../utils/liquidity');
-    const liquidityScores = await calculateLiquidityScores(marketIds);
-
     // Helper function to check if outcome looks like a bucket (continuous range)
     const isBucketOutcome = (outcome: string): boolean => {
       const lower = outcome.toLowerCase();
@@ -545,9 +540,9 @@ router.get('/', async (req: Request, res: Response) => {
           ...market,
           currentPrice,
           probabilityDisplay,
-          liquidityScore: market.liquidity || 0, // Use stored score
-          volume: market.volume || 0,
-          volume24h: market.volume_24h || 0,
+          liquidityScore: (market as any).liquidity || 0, // Use stored score
+          volume: (market as any).volume || 0,
+          volume24h: (market as any).volume_24h || 0,
         };
       })
     );
@@ -660,15 +655,12 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     const outcomesWithPrices = await Promise.all(pricesPromises);
 
-    // Calculate liquidity score
-    const liquidityScore = await calculateLiquidityScore(id);
-
     const marketWithOutcomes: MarketWithOutcomes = {
       ...market,
       outcomes: outcomesWithPrices,
-      liquidityScore: market.liquidity || 0,
-      volume: market.volume || 0,
-      volume24h: market.volume_24h || 0,
+      liquidityScore: (market as any).liquidity || 0,
+      volume: (market as any).volume || 0,
+      volume24h: (market as any).volume_24h || 0,
     };
 
     // Cache the result

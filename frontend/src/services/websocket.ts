@@ -1,6 +1,26 @@
 import { io, Socket } from 'socket.io-client';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
+// Ensure WS URL has protocol, default to https for production
+const getWsUrl = () => {
+  const envUrl = import.meta.env.VITE_WS_URL;
+  if (!envUrl) {
+    return 'http://localhost:3000';
+  }
+  // If URL doesn't start with http:// or https://, add https://
+  if (!envUrl.startsWith('http://') && !envUrl.startsWith('https://')) {
+    return `https://${envUrl}`;
+  }
+  // Convert http:// to ws:// and https:// to wss:// for WebSocket
+  if (envUrl.startsWith('http://')) {
+    return envUrl.replace('http://', 'ws://');
+  }
+  if (envUrl.startsWith('https://')) {
+    return envUrl.replace('https://', 'wss://');
+  }
+  return envUrl;
+};
+
+const WS_URL = getWsUrl();
 
 class WebSocketService {
   private socket: Socket | null = null;

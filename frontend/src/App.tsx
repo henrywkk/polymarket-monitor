@@ -14,6 +14,12 @@ const MarketDetail = lazy(() =>
 );
 
 function App() {
+  // Debug: Log environment variables (remove in production)
+  if (import.meta.env.DEV) {
+    console.log('API URL:', import.meta.env.VITE_API_URL);
+    console.log('WS URL:', import.meta.env.VITE_WS_URL);
+  }
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-gray-50">
@@ -29,7 +35,7 @@ function App() {
             fallback={
               <div className="container mx-auto px-4 py-8">
                 <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   <p className="mt-4 text-gray-600">Loading...</p>
                 </div>
               </div>

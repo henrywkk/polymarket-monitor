@@ -10,8 +10,18 @@ export const useMarkets = (params?: {
 }) => {
   return useQuery<MarketsResponse>({
     queryKey: ['markets', params],
-    queryFn: () => marketsApi.getMarkets(params),
+    queryFn: async () => {
+      try {
+        const response = await marketsApi.getMarkets(params);
+        console.log('Markets response:', response);
+        return response;
+      } catch (error) {
+        console.error('Error fetching markets:', error);
+        throw error;
+      }
+    },
     staleTime: 30000, // 30 seconds
+    retry: 2,
   });
 };
 

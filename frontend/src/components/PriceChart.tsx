@@ -13,9 +13,10 @@ import { useMarketHistory } from '../hooks/useMarketHistory';
 
 interface PriceChartProps {
   marketId: string;
+  primaryOutcomeId?: string; // Filter chart to show only this outcome's history
 }
 
-export const PriceChart = ({ marketId }: PriceChartProps) => {
+export const PriceChart = ({ marketId, primaryOutcomeId }: PriceChartProps) => {
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '30d'>('24h');
   const { data, isLoading } = useMarketHistory(marketId, timeframe);
 
@@ -35,21 +36,67 @@ export const PriceChart = ({ marketId }: PriceChartProps) => {
     );
   }
 
-  // Transform data for chart - ensure all values are numbers
-  const chartData = data.data.map((item) => {
-    const impliedProb = Number(item.implied_probability) || 0;
-    const bidPrice = Number(item.bid_price) || 0;
-    const askPrice = Number(item.ask_price) || 0;
+  // Transform data for chart - filter by primaryOutcomeId if provided
+  // Group by timestamp and calculate expected value if multiple outcomes per timestamp
+  const filteredData = primaryOutcomeId 
+    ? data.data.filter((item: any) => item.outcome_id === primaryOutcomeId)
+    : data.data;
+  
+  if (filteredData.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center text-slate-500">
+        No price history available for selected outcome
+      </div>
+    );
+  }
+  
+  // Group by timestamp to handle multiple outcomes at the same time
+  const groupedByTime = new Map<string, any[]>();
+  for (const item of filteredData) {
+    const timeKey = new Date(item.timestamp).toISOString();
+    if (!groupedByTime.has(timeKey)) {
+      groupedByTime.set(timeKey, []);
+    }
+    groupedByTime.get(timeKey)!.push(item);
+  }
+  
+  // Calculate expected value for each timestamp (if multiple outcomes)
+  // Or use single outcome's probability
+  const chartData = Array.from(groupedByTime.entries()).map(([, items]) => {
+    // If we have a primary outcome filter, use that outcome's data
+    if (primaryOutcomeId && items.length > 0) {
+      const item = items[0];
+      return {
+        time: new Date(item.timestamp).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        probability: Number(item.implied_probability) || 0,
+        bid: Number(item.bid_price) || 0,
+        ask: Number(item.ask_price) || 0,
+      };
+    }
+    
+    // Otherwise, calculate average probability (simple average for now)
+    // In the future, we could calculate expected value here
+    const avgProb = items.reduce((sum, item) => sum + (Number(item.implied_probability) || 0), 0) / items.length;
+    const avgBid = items.reduce((sum, item) => sum + (Number(item.bid_price) || 0), 0) / items.length;
+    const avgAsk = items.reduce((sum, item) => sum + (Number(item.ask_price) || 0), 0) / items.length;
     
     return {
-      time: new Date(item.timestamp).toLocaleTimeString('en-US', {
+      time: new Date(items[0].timestamp).toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
       }),
-      probability: parseFloat(impliedProb.toFixed(2)),
-      bid: parseFloat(bidPrice.toFixed(4)),
-      ask: parseFloat(askPrice.toFixed(4)),
+      probability: parseFloat(avgProb.toFixed(2)),
+      bid: parseFloat(avgBid.toFixed(4)),
+      ask: parseFloat(avgAsk.toFixed(4)),
     };
+  }).sort((a, b) => {
+    // Sort by time
+    const timeA = new Date(a.time).getTime();
+    const timeB = new Date(b.time).getTime();
+    return timeA - timeB;
   });
 
   return (

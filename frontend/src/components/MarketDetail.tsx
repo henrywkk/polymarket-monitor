@@ -9,6 +9,10 @@ import {
   getPrimaryOutcome,
   OutcomeWithPrice 
 } from '../utils/market-calculations';
+import {
+  groupOutcomesByBucket,
+  getPrimaryOutcomeForBucket
+} from '../utils/outcome-grouping';
 
 export const MarketDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -193,8 +197,13 @@ export const MarketDetail = () => {
       <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-8 mb-6">
         <h2 className="text-2xl font-black text-white mb-6">
           Price History
+          {primaryOutcome && (
+            <span className="text-sm font-normal text-slate-500 ml-2">
+              ({primaryOutcome.outcome})
+            </span>
+          )}
         </h2>
-        <PriceChart marketId={market.id} />
+        <PriceChart marketId={market.id} primaryOutcomeId={primaryOutcome?.id} />
       </div>
 
       {/* Outcomes */}
@@ -210,47 +219,101 @@ export const MarketDetail = () => {
             )}
           </div>
           <div className="space-y-3">
-            {market.outcomes.map((outcome) => {
-              const isPrimary = primaryOutcome?.id === outcome.id;
-              return (
-                <div
-                  key={outcome.id}
-                  className={`border rounded-xl p-4 transition-all ${
-                    isPrimary 
-                      ? 'border-blue-500/50 bg-blue-500/5' 
-                      : 'border-slate-800 bg-slate-900/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className={`font-semibold ${isPrimary ? 'text-blue-400' : 'text-white'}`}>
-                        {outcome.outcome}
-                      </span>
-                      {isPrimary && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                          Primary
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      {outcome.currentPrice ? (
-                        <>
-                          <span className="text-blue-400 font-bold text-lg">
-                            {Number(outcome.currentPrice.implied_probability).toFixed(1)}%
+            {(() => {
+              // Group outcomes by bucket (for multi-outcome markets)
+              const buckets = groupOutcomesByBucket(market.outcomes);
+              const bucketEntries = Array.from(buckets.entries());
+              
+              // If we have buckets, display them; otherwise display all outcomes
+              if (bucketEntries.length > 0 && bucketEntries.length < market.outcomes.length) {
+                return bucketEntries.map(([bucketName, bucketOutcomes]) => {
+                  const primaryBucketOutcome = getPrimaryOutcomeForBucket(bucketOutcomes);
+                  const isPrimary = primaryOutcome?.id === primaryBucketOutcome?.id;
+                  
+                  return (
+                    <div
+                      key={bucketName}
+                      className={`border rounded-xl p-4 transition-all ${
+                        isPrimary 
+                          ? 'border-blue-500/50 bg-blue-500/5' 
+                          : 'border-slate-800 bg-slate-900/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className={`font-semibold ${isPrimary ? 'text-blue-400' : 'text-white'}`}>
+                            {bucketName}
                           </span>
-                          <div className="text-xs text-slate-500 mt-1">
-                            Bid: {Number(outcome.currentPrice.bid_price).toFixed(4)} | 
-                            Ask: {Number(outcome.currentPrice.ask_price).toFixed(4)}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-slate-500 text-sm">No price data</span>
-                      )}
+                          {isPrimary && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          {primaryBucketOutcome?.currentPrice ? (
+                            <>
+                              <span className="text-blue-400 font-bold text-lg">
+                                {Number(primaryBucketOutcome.currentPrice.implied_probability).toFixed(1)}%
+                              </span>
+                              <div className="text-xs text-slate-500 mt-1">
+                                Bid: {Number(primaryBucketOutcome.currentPrice.bid_price).toFixed(4)} | 
+                                Ask: {Number(primaryBucketOutcome.currentPrice.ask_price).toFixed(4)}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="text-slate-500 text-sm">No price data</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                });
+              } else {
+                // Display all outcomes individually (for binary markets or when grouping doesn't apply)
+                return market.outcomes.map((outcome) => {
+                  const isPrimary = primaryOutcome?.id === outcome.id;
+                  return (
+                    <div
+                      key={outcome.id}
+                      className={`border rounded-xl p-4 transition-all ${
+                        isPrimary 
+                          ? 'border-blue-500/50 bg-blue-500/5' 
+                          : 'border-slate-800 bg-slate-900/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className={`font-semibold ${isPrimary ? 'text-blue-400' : 'text-white'}`}>
+                            {outcome.outcome}
+                          </span>
+                          {isPrimary && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          {outcome.currentPrice ? (
+                            <>
+                              <span className="text-blue-400 font-bold text-lg">
+                                {Number(outcome.currentPrice.implied_probability).toFixed(1)}%
+                              </span>
+                              <div className="text-xs text-slate-500 mt-1">
+                                Bid: {Number(outcome.currentPrice.bid_price).toFixed(4)} | 
+                                Ask: {Number(outcome.currentPrice.ask_price).toFixed(4)}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="text-slate-500 text-sm">No price data</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              }
+            })()}
           </div>
         </div>
       )}

@@ -202,7 +202,8 @@ export class AnomalyDetector {
       
       for (const trade of allTrades) {
         const tradeTimestamp = trade.timestamp || 0;
-        const tradeSize = trade.size || 0;
+        // Use sizeInUSDC if available (from newer trades), fallback to size for backward compatibility
+        const tradeSize = trade.sizeInUSDC !== undefined ? trade.sizeInUSDC : (trade.size || 0);
         
         // Round timestamp to nearest minute
         const windowKey = Math.floor(tradeTimestamp / 60000) * 60000;

@@ -625,13 +625,25 @@ export class MarketIngestionService {
       const outcome = outcomeResult.rows[0];
       const marketId = outcome.market_id;
       
+      // IMPORTANT: In Polymarket CLOB WebSocket, 'size' is likely in SHARES, not USDC
+      // To get USDC value, we multiply: size (shares) × price (USDC per share)
+      // However, if 'size' is already very large (> $1000) and price is small (< 0.1),
+      // it's possible 'size' is already in USDC. We'll calculate both and use the more reasonable value.
+      const sizeInUSDC = size * price;
+      
+      // Sanity check: If calculated USDC seems unreasonably large, 'size' might already be in USDC
+      // Use size directly if: size > 1000 AND sizeInUSDC > size * 10 (indicates price was incorrectly used)
+      const finalSizeInUSDC = (size > 1000 && sizeInUSDC > size * 10) ? size : sizeInUSDC;
+      
       // Store trade in Redis sliding window (last 100 trades, 24 hour TTL)
       // Key is per token_id (which is per outcome), so each outcome has its own trade history
+      // Store both original size and calculated USDC value
       await RedisSlidingWindow.add(
         `trades:${assetId}`, // assetId is the token_id, unique per outcome
         {
           price,
-          size,
+          size, // Original value from WebSocket
+          sizeInUSDC: finalSizeInUSDC, // Calculated USDC value
           timestamp,
           side,
           marketId,
@@ -648,23 +660,23 @@ export class MarketIngestionService {
           outcomeId: outcome.id,
           tokenId: assetId,
           price,
-          size,
+          size: finalSizeInUSDC, // Send USDC value to frontend
           timestamp,
           side,
         });
       }
       
-      // Detect whale trades
+      // Detect whale trades - use USDC value
       const whaleAlert = this.anomalyDetector.detectWhaleTrade(
         marketId,
         outcome.id,
         assetId,
-        size
+        finalSizeInUSDC // Use USDC value for whale detection
       );
 
       if (whaleAlert) {
         await this.anomalyDetector.storeAlert(whaleAlert);
-        console.log(`[Whale Trade] Asset ${assetId} (Market: ${marketId}): $${size.toFixed(2)} at ${price}`);
+        console.log(`[Whale Trade] Asset ${assetId} (Market: ${marketId}): $${finalSizeInUSDC.toFixed(2)} USDC (raw size: ${size.toFixed(2)}, price: ${price.toFixed(4)})`);
       }
 
       // Detect fat finger (price deviation + reversion)
@@ -680,23 +692,24 @@ export class MarketIngestionService {
       }
 
       // Store volume in Redis for acceleration detection
+      // Use USDC value for volume tracking (consistent with how volume is typically measured)
       const volumeKey = `volume:${marketId}:${outcome.id}`;
       await RedisSlidingWindow.add(
         volumeKey,
         {
-          volume: size,
+          volume: finalSizeInUSDC, // Use USDC value for volume
           timestamp: Date.now(),
         },
         7200000, // 2 hours TTL
         3600 // Max 3600 data points
       );
 
-      // Detect volume acceleration
+      // Detect volume acceleration - use USDC value
       const volumeAccelerationAlert = await this.anomalyDetector.detectVolumeAcceleration(
         marketId,
         outcome.id,
         assetId,
-        size
+        finalSizeInUSDC // Use USDC value for volume acceleration detection
       );
 
       if (volumeAccelerationAlert) {

@@ -30,7 +30,7 @@ export interface AlertEvent {
 }
 
 export class AnomalyDetector {
-  private readonly PRICE_VELOCITY_THRESHOLD = 15; // 15% price change in 1 minute
+  private readonly PRICE_VELOCITY_THRESHOLD = 0.15; // 15 percentage points (absolute change) in 1 minute
   private readonly FAT_FINGER_THRESHOLD = 30; // 30% price deviation
   private readonly LIQUIDITY_VACUUM_SPREAD_THRESHOLD = 0.10; // 10 cents
   private readonly DEPTH_DROP_THRESHOLD = 0.80; // 80% depth drop
@@ -128,12 +128,11 @@ export class AnomalyDetector {
       // Percentage change is misleading for small prices (e.g., 0.001 -> 0.002 = 100% but only 0.001 absolute change)
       // Use absolute change threshold: 0.15 (15 percentage points) for prices in 0-1 range
       const absoluteChange = Math.abs(currentPrice - lastPrice);
-      const ABSOLUTE_CHANGE_THRESHOLD = 0.15; // 15 percentage points (equivalent to 15% for prices in 0-1 range)
       
       // Also calculate percentage change for logging/debugging
       const percentageChange = calculatePercentageChange(lastPrice, currentPrice);
 
-      if (absoluteChange > ABSOLUTE_CHANGE_THRESHOLD) {
+      if (absoluteChange > this.PRICE_VELOCITY_THRESHOLD) {
         // Price moved >15% in <1min - potential insider move
         // But we need to also check volume acceleration (done in detectInsiderMove)
         return {

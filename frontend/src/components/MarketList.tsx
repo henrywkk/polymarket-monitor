@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, ExternalLink, TrendingUp, Activity, Server } from 'lucide-react';
 import { useMarkets } from '../hooks/useMarkets';
+import { useGlobalStats } from '../hooks/useGlobalStats';
+import { useCategories } from '../hooks/useCategories';
 import { Link } from 'react-router-dom';
 import { wsService } from '../services/websocket';
 import { Market } from '../services/api';
@@ -80,95 +82,114 @@ const MarketRow = ({
   }, [priceUpdate]);
 
   return (
-    <motion.tr 
-      layout
-      initial={{ opacity: 0 }}
-      animate={{ 
-        opacity: 1,
-        backgroundColor: pulse ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
-      }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.3 }}
-      className="group hover:bg-slate-800/20 transition-all border-b border-slate-800/40"
-    >
-      <td className="px-8 py-6">
-        <div className="flex flex-col">
-          <Link 
-            to={`/markets/${market.id}`}
-            className="text-white font-bold text-base leading-tight group-hover:text-blue-400 transition-colors"
+    <>
+      {/* Row 1: Market Name (spans all columns) */}
+      <motion.tr 
+        layout
+        initial={{ opacity: 0 }}
+        animate={{ 
+          opacity: 1,
+          backgroundColor: pulse ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
+        }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        className="group hover:bg-slate-800/20 transition-all border-b border-slate-800/40"
+      >
+        <td colSpan={9} className="px-8 py-4">
+          <div className="flex items-center justify-between">
+            <Link 
+              to={`/markets/${market.id}`}
+              className="text-white font-bold text-base leading-tight group-hover:text-blue-400 transition-colors flex-1 min-w-0 pr-4"
+            >
+              {market.question}
+            </Link>
+            <span className="text-slate-500 text-xs font-mono uppercase tracking-tighter whitespace-nowrap">{market.id}</span>
+          </div>
+        </td>
+      </motion.tr>
+      {/* Row 2: All other data */}
+      <motion.tr 
+        layout
+        initial={{ opacity: 0 }}
+        animate={{ 
+          opacity: 1,
+          backgroundColor: pulse ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
+        }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        className="group hover:bg-slate-800/10 transition-all border-b border-slate-800/40"
+      >
+        <td className="px-8 py-4">
+          {/* Empty - market name is in row above */}
+        </td>
+        <td className="px-8 py-4 text-right">
+          <div className="flex flex-col items-end">
+            <motion.div 
+              animate={{ scale: pulse ? 1.1 : 1 }}
+              className={`font-mono font-black text-lg ${
+                isHighProbability ? 'text-red-500' : 'text-blue-400'
+              }`}
+            >
+              {currentProbValue.toFixed(initialProb.label === 'Expected Value' ? 2 : 1)}%
+            </motion.div>
+            {initialProb.outcome && (
+              <div className="text-xs text-slate-500 mt-0.5">
+                {initialProb.outcome}
+              </div>
+            )}
+            {initialProb.label === 'Expected Value' && (
+              <div className="text-xs text-slate-500 mt-0.5">
+                Expected
+              </div>
+            )}
+          </div>
+        </td>
+        <td className="px-8 py-4 text-right">
+          <div className="text-slate-300 font-mono font-bold">
+            {formatVolume(market.volume24h)}
+          </div>
+        </td>
+        <td className="px-8 py-4 text-right">
+          <div className="text-slate-400 font-mono text-sm">
+            {formatVolume(market.volume)}
+          </div>
+        </td>
+        <td className="px-8 py-4 text-right">
+          <div className={`${priceUpdate ? 'text-blue-400 font-bold' : 'text-slate-400'} text-xs font-mono`}>
+            {formatLastTrade(lastTradeTime)}
+          </div>
+        </td>
+        <td className="px-8 py-4 text-center">
+          <span className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-800/50 text-[10px] font-bold uppercase ${getCategoryColor(market.category)}`}>
+            {market.category}
+          </span>
+        </td>
+        <td className="px-8 py-4 text-right">
+          <div className="text-slate-300 text-sm font-mono font-semibold">
+            {market.liquidityScore !== undefined && market.liquidityScore !== null 
+              ? Number(market.liquidityScore).toFixed(1)
+              : 'N/A'}
+          </div>
+        </td>
+        <td className="px-8 py-4 text-right">
+          <div className="text-slate-400 text-sm font-mono">
+            {formatEndDate(market.end_date)}
+          </div>
+        </td>
+        <td className="px-8 py-4 text-right">
+          <a
+            href={market.slug 
+              ? `https://polymarket.com/event/${market.slug}`
+              : `https://polymarket.com/event/${market.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white transition-all transform active:scale-95"
           >
-            {market.question}
-          </Link>
-          <span className="text-slate-500 text-xs mt-1 font-mono uppercase tracking-tighter">{market.id}</span>
-        </div>
-      </td>
-      <td className="px-8 py-6 text-right">
-        <div className="flex flex-col items-end">
-          <motion.div 
-            animate={{ scale: pulse ? 1.1 : 1 }}
-            className={`font-mono font-black text-lg ${
-              isHighProbability ? 'text-red-500' : 'text-blue-400'
-            }`}
-          >
-            {currentProbValue.toFixed(initialProb.label === 'Expected Value' ? 2 : 1)}%
-          </motion.div>
-          {initialProb.outcome && (
-            <div className="text-xs text-slate-500 mt-0.5">
-              {initialProb.outcome}
-            </div>
-          )}
-          {initialProb.label === 'Expected Value' && (
-            <div className="text-xs text-slate-500 mt-0.5">
-              Expected
-            </div>
-          )}
-        </div>
-      </td>
-      <td className="px-8 py-6 text-right">
-        <div className="text-slate-300 font-mono font-bold">
-          {formatVolume(market.volume24h)}
-        </div>
-      </td>
-      <td className="px-8 py-6 text-right">
-        <div className="text-slate-400 font-mono text-sm">
-          {formatVolume(market.volume)}
-        </div>
-      </td>
-      <td className="px-8 py-6 text-right">
-        <div className={`${priceUpdate ? 'text-blue-400 font-bold' : 'text-slate-400'} text-xs font-mono`}>
-          {formatLastTrade(lastTradeTime)}
-        </div>
-      </td>
-      <td className="px-8 py-6 text-center">
-        <span className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-800/50 text-[10px] font-bold uppercase ${getCategoryColor(market.category)}`}>
-          {market.category}
-        </span>
-      </td>
-      <td className="px-8 py-6 text-right">
-        <div className="text-slate-300 text-sm font-mono font-semibold">
-          {market.liquidityScore !== undefined && market.liquidityScore !== null 
-            ? Number(market.liquidityScore).toFixed(1)
-            : 'N/A'}
-        </div>
-      </td>
-      <td className="px-8 py-6 text-right">
-        <div className="text-slate-400 text-sm font-mono">
-          {formatEndDate(market.end_date)}
-        </div>
-      </td>
-      <td className="px-8 py-6 text-right">
-        <a
-          href={market.slug 
-            ? `https://polymarket.com/event/${market.slug}`
-            : `https://polymarket.com/event/${market.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white transition-all transform active:scale-95"
-        >
-          <ExternalLink className="w-5 h-5" />
-        </a>
-      </td>
-    </motion.tr>
+            <ExternalLink className="w-5 h-5" />
+          </a>
+        </td>
+      </motion.tr>
+    </>
   );
 };
 
@@ -186,6 +207,12 @@ export const MarketList = () => {
     category: category !== 'All' ? category : undefined,
     sortBy,
   });
+
+  // Get global stats for accurate active market count
+  const { data: globalStats } = useGlobalStats();
+  
+  // Get categories for improved filter
+  const { data: categoriesData } = useCategories();
 
   // Initialize WebSocket connection and check status
   useEffect(() => {
@@ -224,21 +251,16 @@ export const MarketList = () => {
     return () => clearTimeout(timer);
   }, [searchInput, handleSearchChange]);
 
-  // Calculate stats
+  // Calculate stats - use global stats for accurate counts
   const stats = useMemo(() => {
-    if (!data?.data) return { total: 0, active: 0, avgLiquidity: 0 };
+    if (!data?.data) return { total: 0, active: 0, avgVolume: 0 };
     
     const markets = data.data;
     
-    // Active markets = markets that haven't ended (from current page only)
-    // Note: This is a limitation - we only count active markets from the current page
-    // For true active count, we'd need a separate API endpoint
-    const activeMarkets = markets.filter(m => {
-      if (!m.end_date) return true;
-      return new Date(m.end_date) > new Date();
-    });
+    // Use global stats for accurate active market count
+    const activeCount = globalStats?.markets.active || 0;
     
-    // Calculate average volume from markets
+    // Calculate average volume from current page markets
     const totalVolume = markets.reduce((sum, m) => 
       sum + (Number(m.volume24h) || 0), 0
     );
@@ -246,10 +268,10 @@ export const MarketList = () => {
 
     return {
       total: data.pagination.total, // Total markets in database
-      active: activeMarkets.length, // Active markets in current page (limited)
+      active: activeCount, // Active markets from global stats (accurate)
       avgVolume,
     };
-  }, [data]);
+  }, [data, globalStats]);
 
   const formatVolume = (volume: number | undefined) => {
     if (volume === undefined || volume === null) return 'N/A';
@@ -384,7 +406,8 @@ export const MarketList = () => {
 
         {/* Category & Sort Filters */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-          <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex flex-wrap">
+          <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex flex-wrap gap-1">
+            {/* Fixed order categories: All, Crypto, Politics, Sports */}
             {['All', 'Crypto', 'Politics', 'Sports'].map((cat) => (
               <button
                 key={cat}
@@ -401,6 +424,27 @@ export const MarketList = () => {
                 {cat.toUpperCase()}
               </button>
             ))}
+            {/* Dynamic categories from API (sorted by active count) */}
+            {categoriesData?.data
+              .filter(cat => !['All', 'Crypto', 'Politics', 'Sports'].includes(cat.name))
+              .slice(0, 6) // Show top 6 dynamic categories
+              .map((cat) => (
+                <button
+                  key={cat.name}
+                  onClick={() => {
+                    setCategory(cat.name);
+                    setPage(1);
+                  }}
+                  className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                    category === cat.name 
+                      ? 'bg-blue-600 text-white shadow-lg' 
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title={`${cat.activeCount} active, ${cat.marketCount} total`}
+                >
+                  {cat.name.toUpperCase()}
+                </button>
+              ))}
           </div>
 
           <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex">
@@ -467,7 +511,7 @@ export const MarketList = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-900/30">
-                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
+                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest"></th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Probability</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Vol (24h)</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Total Vol</th>

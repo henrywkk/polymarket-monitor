@@ -191,3 +191,23 @@ export const marketsApi = {
   },
 };
 
+export interface Category {
+  name: string;
+  marketCount: number;
+  activeCount: number;
+  closedCount: number;
+}
+
+export interface CategoriesResponse {
+  data: Category[];
+  total: number;
+  fixed: number;
+  dynamic: number;
+}
+
+export const categoriesApi = {
+  getCategories: async (): Promise<CategoriesResponse> => {
+    const response = await apiClient.get<CategoriesResponse>('/categories');
+    return response.data;
+  },
+};

@@ -158,23 +158,26 @@ export class PolymarketWebSocketClient {
       console.log('[WebSocket Debug] Full message:', JSON.stringify(msg, null, 2));
     }
 
+    // Extract assetId once for reuse
+    const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
+
     // Polymarket CLOB WebSocket events
     // 1. Array of price_changes (most common for updates)
     if (Array.isArray(msg.price_changes)) {
       for (const pc of msg.price_changes) {
-        const assetId = (pc.asset_id || pc.token_id) as string;
+        const pcAssetId = (pc.asset_id || pc.token_id) as string;
         const bid = parseFloat(String(pc.best_bid || pc.bid || 0));
         const ask = parseFloat(String(pc.best_ask || pc.ask || 0));
-        if (assetId && (bid > 0 || ask > 0)) {
-          this.emitPriceEvent(assetId, bid, ask, 'price_changed');
+        if (pcAssetId && (bid > 0 || ask > 0)) {
+          this.emitPriceEvent(pcAssetId, bid, ask, 'price_changed');
         }
         
         // Check for trade data in price_changes
         const tradeSize = pc.size || pc.volume || pc.trade_size || pc.amount || pc.quantity;
-        if (tradeSize && assetId) {
+        if (tradeSize && pcAssetId) {
           const tradePrice = bid || ask || parseFloat(String(pc.price || pc.last_price || 0));
           if (tradePrice > 0) {
-            this.emitTradeEvent(assetId, {
+            this.emitTradeEvent(pcAssetId, {
               price: tradePrice,
               size: parseFloat(String(tradeSize)),
               timestamp: Date.now(),
@@ -188,7 +191,6 @@ export class PolymarketWebSocketClient {
     
     // Check for trade data in other message formats
     const tradeSize = msg.size || msg.volume || msg.trade_size || msg.amount || msg.quantity;
-    const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
     if (tradeSize && assetId) {
       const tradePrice = parseFloat(String(msg.price || msg.last_price || msg.best_bid || msg.best_ask || 0));
       if (tradePrice > 0) {
@@ -203,7 +205,6 @@ export class PolymarketWebSocketClient {
 
     // 2. Orderbook updates (full book with bids and asks)
     if (Array.isArray(msg.bids) && Array.isArray(msg.asks)) {
-      const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
       if (assetId) {
         // Parse full orderbook
         const bids = this.parseOrderbookSide(msg.bids);
@@ -226,7 +227,6 @@ export class PolymarketWebSocketClient {
 
     // 3. Direct market messages with best bid/ask
     const eventType = (msg.event_type || msg.type) as string;
-    const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
 
     if (!assetId) return;
 

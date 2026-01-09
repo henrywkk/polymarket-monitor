@@ -83,6 +83,29 @@ export class WebSocketServer {
     this.io.to(`market:${marketId}`).emit('price_update', update);
   }
 
+  broadcastTradeUpdate(trade: {
+    marketId: string;
+    outcomeId: string;
+    tokenId: string;
+    price: number;
+    size: number;
+    timestamp: number;
+    side?: 'buy' | 'sell';
+  }): void {
+    const update = {
+      marketId: trade.marketId,
+      outcomeId: trade.outcomeId,
+      tokenId: trade.tokenId,
+      price: trade.price,
+      size: trade.size,
+      timestamp: trade.timestamp,
+      side: trade.side,
+    };
+
+    // Broadcast to all clients subscribed to this market
+    this.io.to(`market:${trade.marketId}`).emit('trade_update', update);
+  }
+
   getIO(): SocketIOServer {
     return this.io;
   }

@@ -1,9 +1,10 @@
 import { query } from '../config/database';
-import { PolymarketWebSocketClient, PolymarketPriceEvent } from './polymarket-client';
+import { PolymarketWebSocketClient, PolymarketPriceEvent, PolymarketTradeEvent } from './polymarket-client';
 import { calculateImpliedProbability, calculateMidPrice, isValidPrice } from '../utils/probability';
 import { Market, Outcome } from '../models/Market';
 import { redis } from '../config/redis';
 import { WebSocketServer } from './websocket-server';
+import { RedisSlidingWindow } from './redis-storage';
 
 export class MarketIngestionService {
   private wsClient: PolymarketWebSocketClient;
@@ -24,6 +25,11 @@ export class MarketIngestionService {
     // Listen to all price events
     this.wsClient.onMessage('*', (event: PolymarketPriceEvent) => {
       this.handlePriceEvent(event);
+    });
+    
+    // Listen to all trade events
+    this.wsClient.onTrade('*', (event: PolymarketTradeEvent) => {
+      this.handleTradeEvent(event);
     });
   }
 
@@ -290,6 +296,65 @@ export class MarketIngestionService {
       );
     } catch (error) {
       console.error('Error handling price event:', error);
+    }
+  }
+
+  /**
+   * Handle trade events from WebSocket
+   */
+  public async handleTradeEvent(event: PolymarketTradeEvent): Promise<void> {
+    try {
+      const { assetId, price, size, timestamp, side } = event;
+      
+      // Find the outcome by token_id (assetId)
+      const outcomeResult = await query(
+        'SELECT id, market_id, token_id FROM outcomes WHERE token_id = $1',
+        [assetId]
+      );
+      
+      if (outcomeResult.rows.length === 0) {
+        // Outcome not found - likely from unsynced market
+        // Silently ignore (we already warn in handlePriceEvent)
+        return;
+      }
+      
+      const outcome = outcomeResult.rows[0];
+      const marketId = outcome.market_id;
+      
+      // Store trade in Redis sliding window (last 100 trades, 24 hour TTL)
+      await RedisSlidingWindow.add(
+        `trades:${assetId}`,
+        {
+          price,
+          size,
+          timestamp,
+          side,
+          marketId,
+          outcomeId: outcome.id,
+        },
+        86400000, // 24 hours
+        100 // Max 100 trades
+      );
+      
+      // Broadcast trade update to frontend if WebSocket server is available
+      if (this.wsServer) {
+        this.wsServer.broadcastTradeUpdate({
+          marketId,
+          outcomeId: outcome.id,
+          tokenId: assetId,
+          price,
+          size,
+          timestamp,
+          side,
+        });
+      }
+      
+      // Log large trades (potential whale trades)
+      if (size >= 10000) {
+        console.log(`[Whale Trade] Asset ${assetId} (Market: ${marketId}): $${size.toFixed(2)} at ${price}`);
+      }
+    } catch (error) {
+      console.error('Error handling trade event:', error);
     }
   }
 

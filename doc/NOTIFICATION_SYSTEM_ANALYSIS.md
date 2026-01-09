@@ -100,14 +100,18 @@ We have a **solid foundation** with real-time data ingestion, but we're missing 
 
 #### 1. **Trade Data Collection** 🔴 HIGH PRIORITY
 **Current State:**
-- WebSocket receives price updates but NOT trade size/volume
+- WebSocket receives price updates via `market` channel
+- Currently parsing `price_changes` and `book` updates
+- **Need to verify**: Trade size/volume data in market channel messages
 - No trade history storage
 - Cannot detect whale trades or volume acceleration
 
 **Required:**
-- Subscribe to `trades` channel (not just `market` channel)
-- Store trade history in Redis (sliding windows)
+- Extract trade data from `market` channel messages (no separate trades channel)
+- Parse trade size/volume if available in WebSocket messages
+- Store trade history in Redis (sliding windows with TTL)
 - Track trade size in USDC
+- Fallback to REST API if WebSocket doesn't provide trade data
 
 **Effort:** Medium (2-3 days)
 
@@ -172,27 +176,37 @@ We have a **solid foundation** with real-time data ingestion, but we're missing 
 **Goal:** Collect all necessary data for anomaly detection
 
 **Tasks:**
-1. ✅ **WebSocket Trade Channel** (2 days)
-   - Subscribe to `trades` channel
-   - Parse trade events (price, size, timestamp)
-   - Store trade history in Redis
+1. ✅ **WebSocket Trade Data Extraction** (2 days)
+   - Analyze `market` channel messages for trade data
+   - Extract trade size/volume from WebSocket messages (if available)
+   - Parse trade events (price, size, timestamp, asset_id)
+   - Store trade history in Redis with sliding windows
+   - Implement fallback to REST API if WebSocket lacks trade data
 
 2. ✅ **Orderbook Depth Analysis** (2 days)
-   - Enhance `book` event handler
-   - Calculate bid-ask spread
+   - Enhance `book` event handler in `polymarket-client.ts`
+   - Calculate bid-ask spread from orderbook
    - Track depth within 2% of mid-price
-   - Store depth metrics in Redis
+   - Store depth metrics in Redis (sliding window with TTL)
 
-3. ✅ **Enhanced Redis Storage** (2 days)
-   - Implement Redis Streams/ZSET for sliding windows
-   - Store last 100 trades per market
-   - Store 60-minute price/volume history
-   - Implement TTL management
+3. ✅ **Enhanced Redis Storage with Sliding Windows** (2 days)
+   - Implement Redis ZSET for time-series data (timestamp as score)
+   - Store last 100 trades per market (auto-expire old data)
+   - Store 60-minute price/volume history (TTL: 2 hours)
+   - Implement automatic cleanup of old data
+   - Add Redis Streams for trade events (optional, for replay)
+
+4. ✅ **Frontend Integration** (1 day)
+   - Add WebSocket events for trade data (if needed for UI)
+   - Add orderbook depth display (optional)
+   - Update frontend to show real-time trade activity
+   - Add API endpoints for trade history (if needed)
 
 **Deliverables:**
-- Trade data collection working
+- Trade data collection working (from market channel)
 - Orderbook depth monitoring active
-- Redis sliding windows operational
+- Redis sliding windows operational with automatic cleanup
+- Frontend can display trade activity (if applicable)
 
 ---
 

@@ -9,6 +9,7 @@ import marketsRoutes from './routes/markets';
 import categoriesRoutes from './routes/categories';
 import statsRoutes from './routes/stats';
 import syncRoutes, { setSyncService } from './routes/sync';
+import tradesRoutes from './routes/trades';
 import { PolymarketWebSocketClient } from './services/polymarket-client';
 import { MarketIngestionService } from './services/market-ingestion';
 import { WebSocketServer } from './services/websocket-server';
@@ -65,6 +66,7 @@ app.use('/api/markets', marketsRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/api/trades', tradesRoutes);
 
 // Error handling middleware
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

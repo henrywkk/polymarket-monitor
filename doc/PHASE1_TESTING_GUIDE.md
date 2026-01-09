@@ -148,6 +148,26 @@ Look for these log messages:
 
 ---
 
+## Understanding Asset vs Market vs Outcome
+
+**Important Terminology:**
+- **Market**: A prediction market (e.g., "Will Bitcoin reach $100k by 2025?")
+- **Outcome**: A specific result within a market (e.g., "Yes", "No", "<0.5%", "March 31, 2026")
+- **Token ID / Asset ID**: A unique identifier for each outcome's trading token in Polymarket's CLOB system
+  - Each outcome has its own `token_id`
+  - In WebSocket messages, this is called `assetId`
+  - Redis keys use this: `trades:{token_id}` and `orderbook:{token_id}`
+
+**Example:**
+- Market: "AI bubble burst by...?" (market_id: `85299`)
+  - Outcome 1: "March 31, 2026" → token_id: `284710`
+  - Outcome 2: "December 31, 2025" → token_id: `284711`
+  - Outcome 3: "December 31, 2026" → token_id: `284712`
+
+**Key Point:** When querying Redis with `trades:284710`, you're querying trades for a **specific outcome**, not the entire market. To get all trades for a market, you need to query each outcome's token_id separately, or use the API endpoint which does this automatically.
+
+---
+
 ### Method 3: Direct Redis Inspection
 
 #### Connect to Redis

@@ -88,6 +88,44 @@ curl http://localhost:3000/api/trades/{marketId}/stats
 curl http://localhost:3000/api/trades/orderbook/{marketId}
 ```
 
+#### 4. Get Whale Trades (All Markets)
+
+```bash
+# Get all whale trades (>= $10,000) across all markets
+curl http://localhost:3000/api/trades/whales
+
+# Get whale trades with custom minimum size
+curl http://localhost:3000/api/trades/whales?minSize=50000
+
+# Limit results
+curl http://localhost:3000/api/trades/whales?limit=50
+```
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "price": 0.65,
+      "size": 25000,
+      "timestamp": 1704787200000,
+      "side": "buy",
+      "tokenId": "284710",
+      "outcomeId": "outcome-123",
+      "outcomeName": "Yes",
+      "marketId": "85299"
+    }
+  ],
+  "total": 15,
+  "minSize": 10000,
+  "stats": {
+    "totalWhaleTrades": 15,
+    "largestTrade": 50000,
+    "totalVolume": 250000
+  }
+}
+```
+
 **Response:**
 ```json
 {
@@ -168,7 +206,47 @@ Look for these log messages:
 
 ---
 
-### Method 3: Direct Redis Inspection
+### Method 3: Query Whale Trades
+
+**Whale trades** are trades with size >= $10,000 USDC. They're stored in Redis along with regular trades, but you can query them specifically:
+
+#### Using API (Recommended)
+
+```bash
+# Get all whale trades across all markets
+curl http://localhost:3000/api/trades/whales
+
+# Get whale trades with custom threshold
+curl http://localhost:3000/api/trades/whales?minSize=50000
+
+# Get whale trades for a specific market (use stats endpoint)
+curl http://localhost:3000/api/trades/{marketId}/stats
+# Look for "whaleTradeCount" and "largestTrade" in the response
+```
+
+#### Using Redis (Manual Filtering)
+
+Since Redis stores trades as JSON in sorted sets, you need to:
+1. Get all trades for an outcome
+2. Parse each JSON entry
+3. Filter where `size >= 10000`
+
+```bash
+# Get all trades for an outcome
+ZREVRANGE trades:284710 0 -1
+
+# Each entry is JSON like: {"price":0.65,"size":25000,"timestamp":1704787200000,"side":"buy"}
+# You'll need to parse and filter in your script/language
+
+# Example with jq (if available):
+ZREVRANGE trades:284710 0 -1 | jq 'select(.size >= 10000)'
+```
+
+**Note:** The API endpoint `/api/trades/whales` does this filtering automatically and is much easier to use.
+
+---
+
+### Method 4: Direct Redis Inspection
 
 #### Connect to Redis
 

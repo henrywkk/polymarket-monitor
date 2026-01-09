@@ -6,11 +6,13 @@ import { Market, Outcome } from '../models/Market';
 import { redis } from '../config/redis';
 import { WebSocketServer } from './websocket-server';
 import { RedisSlidingWindow } from './redis-storage';
+import { AnomalyDetector } from './anomaly-detector';
 
 export class MarketIngestionService {
   private wsClient: PolymarketWebSocketClient;
   private restClient: PolymarketRestClient;
   private wsServer?: WebSocketServer;
+  private anomalyDetector: AnomalyDetector;
   private activeMarkets = new Map<string, Set<string>>(); // marketId -> Set of outcomeIds
   private lastPersistedPrices = new Map<string, { price: number; timestamp: number }>(); // outcomeId -> { price, timestamp }
   private warnedAssetIds = new Set<string>(); // Track asset_ids we've warned about to reduce log noise
@@ -22,6 +24,7 @@ export class MarketIngestionService {
     this.wsClient = wsClient;
     this.restClient = restClient;
     this.wsServer = wsServer;
+    this.anomalyDetector = new AnomalyDetector();
     this.setupEventHandlers();
     this.startOrderbookRefresh();
   }
@@ -452,6 +455,55 @@ export class MarketIngestionService {
       const { cacheService } = await import('./cache-service');
       await cacheService.invalidateMarket(marketId);
 
+      // Run anomaly detection on price update
+      // Store price in Redis for velocity tracking
+      const priceKey = `prices:${marketId}:${outcome.id}`;
+      await RedisSlidingWindow.add(
+        priceKey,
+        {
+          price: midPrice,
+          timestamp: Date.now(),
+        },
+        7200000, // 2 hours TTL
+        3600 // Max 3600 data points (1 per second for 1 hour)
+      );
+
+      // Detect price velocity and insider moves
+      const priceVelocityAlert = await this.anomalyDetector.detectPriceVelocity(
+        marketId,
+        outcome.id,
+        outcome.token_id,
+        midPrice
+      );
+
+      if (priceVelocityAlert) {
+        // Check for volume acceleration to confirm insider move
+        // Get recent volume from trade history
+        const recentTrades = await RedisSlidingWindow.getRange(
+          `trades:${outcome.token_id}`,
+          Date.now() - 60000, // Last 1 minute
+          Date.now()
+        );
+        
+        const recentVolume = recentTrades.reduce((sum: number, trade: any) => {
+          return sum + (trade.size || 0);
+        }, 0);
+
+        if (recentVolume > 0) {
+          const insiderMoveAlert = await this.anomalyDetector.detectInsiderMove(
+            marketId,
+            outcome.id,
+            outcome.token_id,
+            midPrice,
+            recentVolume
+          );
+
+          if (insiderMoveAlert) {
+            await this.anomalyDetector.storeAlert(insiderMoveAlert);
+          }
+        }
+      }
+
       // Update last_trade_at and recalculate activity_score for the market
       // Activity score should reflect recent trading activity (price updates)
       // Calculate based on: recent price update frequency and recency of last trade
@@ -558,9 +610,53 @@ export class MarketIngestionService {
         });
       }
       
-      // Log large trades (potential whale trades)
-      if (size >= 10000) {
+      // Detect whale trades
+      const whaleAlert = this.anomalyDetector.detectWhaleTrade(
+        marketId,
+        outcome.id,
+        assetId,
+        size
+      );
+
+      if (whaleAlert) {
+        await this.anomalyDetector.storeAlert(whaleAlert);
         console.log(`[Whale Trade] Asset ${assetId} (Market: ${marketId}): $${size.toFixed(2)} at ${price}`);
+      }
+
+      // Detect fat finger (price deviation + reversion)
+      const fatFingerAlert = await this.anomalyDetector.detectFatFinger(
+        marketId,
+        outcome.id,
+        assetId,
+        price
+      );
+
+      if (fatFingerAlert) {
+        await this.anomalyDetector.storeAlert(fatFingerAlert);
+      }
+
+      // Store volume in Redis for acceleration detection
+      const volumeKey = `volume:${marketId}:${outcome.id}`;
+      await RedisSlidingWindow.add(
+        volumeKey,
+        {
+          volume: size,
+          timestamp: Date.now(),
+        },
+        7200000, // 2 hours TTL
+        3600 // Max 3600 data points
+      );
+
+      // Detect volume acceleration
+      const volumeAccelerationAlert = await this.anomalyDetector.detectVolumeAcceleration(
+        marketId,
+        outcome.id,
+        assetId,
+        size
+      );
+
+      if (volumeAccelerationAlert) {
+        await this.anomalyDetector.storeAlert(volumeAccelerationAlert);
       }
       
       // Update last_trade_at and activity_score when a trade occurs
@@ -658,13 +754,19 @@ export class MarketIngestionService {
         3600 // Max 3600 data points (1 per second)
       );
       
-      // Check for liquidity vacuum (spread > 10 cents)
-      if (metrics.spread > 0.10) {
+      // Detect liquidity vacuum using anomaly detector
+      const liquidityAlert = await this.anomalyDetector.detectLiquidityVacuum(
+        marketId,
+        outcome.id,
+        assetId,
+        metrics.spread,
+        metrics.depth2Percent
+      );
+
+      if (liquidityAlert) {
+        await this.anomalyDetector.storeAlert(liquidityAlert);
         console.log(`[Liquidity Vacuum] Asset ${assetId} (Market: ${marketId}): Spread widened to ${(metrics.spread * 100).toFixed(2)} cents`);
       }
-      
-      // Check for depth drop (80% drop in <1 minute)
-      // We'll compare with previous depth in the anomaly detection phase
       
     } catch (error) {
       console.error('Error handling orderbook event:', error);

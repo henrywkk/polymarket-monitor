@@ -1,5 +1,6 @@
 import { query } from '../config/database';
 import { PolymarketWebSocketClient, PolymarketPriceEvent, PolymarketTradeEvent, PolymarketOrderbookEvent } from './polymarket-client';
+import { PolymarketRestClient } from './polymarket-rest';
 import { calculateImpliedProbability, calculateMidPrice, isValidPrice } from '../utils/probability';
 import { Market, Outcome } from '../models/Market';
 import { redis } from '../config/redis';

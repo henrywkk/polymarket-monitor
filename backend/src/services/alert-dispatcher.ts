@@ -46,8 +46,12 @@ export class AlertDispatcher {
   private channels: NotificationChannel[];
   private isRunning: boolean = false;
   private pollInterval?: NodeJS.Timeout;
+  private cleanupInterval?: NodeJS.Timeout;
   private readonly POLL_INTERVAL_MS = 2000; // Poll every 2 seconds
+  private readonly CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // Cleanup every 5 minutes
   private readonly ALERT_QUEUE_KEY = 'alerts:pending';
+  private readonly MAX_ALERT_AGE_MS = 10 * 60 * 1000; // Only process alerts less than 10 minutes old
+  private readonly CLEANUP_AGE_MS = 30 * 60 * 1000; // Remove alerts older than 30 minutes during cleanup
 
   constructor(throttle: AlertThrottle, channels: NotificationChannel[]) {
     this.throttle = throttle;
@@ -76,6 +80,13 @@ export class AlertDispatcher {
         console.error('[Alert Dispatcher] Error processing queue:', err);
       });
     }, this.POLL_INTERVAL_MS);
+
+    // Periodically clean up very old alerts from the queue
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupOldAlerts().catch(err => {
+        console.error('[Alert Dispatcher] Error during cleanup:', err);
+      });
+    }, this.CLEANUP_INTERVAL_MS);
   }
 
   /**
@@ -90,6 +101,10 @@ export class AlertDispatcher {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = undefined;
+    }
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = undefined;
     }
 
     console.log('[Alert Dispatcher] Stopped');
@@ -113,6 +128,13 @@ export class AlertDispatcher {
       } catch (error) {
         console.error('[Alert Dispatcher] Error parsing alert JSON:', error);
         return;
+      }
+
+      // Skip old alerts - only process alerts that are recent
+      const alertAge = Date.now() - alert.timestamp;
+      if (alertAge > this.MAX_ALERT_AGE_MS) {
+        console.log(`[Alert Dispatcher] Skipping old alert: ${alert.type} for market ${alert.marketId} (age: ${Math.round(alertAge / 1000 / 60)} minutes)`);
+        return; // Skip this alert, it's too old
       }
 
       // Process the alert
@@ -335,6 +357,53 @@ export class AlertDispatcher {
     });
 
     await Promise.allSettled(deliveryPromises);
+  }
+
+  /**
+   * Clean up very old alerts from the queue
+   * This prevents the queue from growing indefinitely with stale alerts
+   */
+  private async cleanupOldAlerts(): Promise<void> {
+    try {
+      const now = Date.now();
+      let removedCount = 0;
+      const maxChecks = 100; // Limit checks to prevent blocking
+
+      // Check alerts from the end of the queue (oldest first)
+      // We'll peek at alerts and remove old ones
+      for (let i = 0; i < maxChecks; i++) {
+        // Peek at the last alert in the queue (oldest)
+        const alertJson = await redis.lindex(this.ALERT_QUEUE_KEY, -1);
+        
+        if (!alertJson) {
+          break; // Queue is empty
+        }
+
+        try {
+          const alert: AlertEvent = JSON.parse(alertJson);
+          const alertAge = now - alert.timestamp;
+
+          if (alertAge > this.CLEANUP_AGE_MS) {
+            // Remove this old alert from the end of the queue
+            await redis.rpop(this.ALERT_QUEUE_KEY);
+            removedCount++;
+          } else {
+            // Found a recent alert, stop cleanup (queue is ordered oldest to newest)
+            break;
+          }
+        } catch (error) {
+          // Invalid JSON, remove it
+          await redis.rpop(this.ALERT_QUEUE_KEY);
+          removedCount++;
+        }
+      }
+
+      if (removedCount > 0) {
+        console.log(`[Alert Dispatcher] Cleaned up ${removedCount} old alerts from queue`);
+      }
+    } catch (error) {
+      console.error('[Alert Dispatcher] Error during cleanup:', error);
+    }
   }
 
   /**

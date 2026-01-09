@@ -364,6 +364,133 @@ export class MarketIngestionService {
   }
 
   /**
+   * Handle orderbook events from WebSocket
+   */
+  public async handleOrderbookEvent(event: PolymarketOrderbookEvent): Promise<void> {
+    try {
+      const { assetId, bids, asks, timestamp } = event;
+      
+      if (bids.length === 0 || asks.length === 0) {
+        // Empty orderbook, skip
+        return;
+      }
+      
+      // Find the outcome by token_id (assetId)
+      const outcomeResult = await query(
+        'SELECT id, market_id, token_id FROM outcomes WHERE token_id = $1',
+        [assetId]
+      );
+      
+      if (outcomeResult.rows.length === 0) {
+        // Outcome not found - likely from unsynced market
+        return;
+      }
+      
+      const outcome = outcomeResult.rows[0];
+      const marketId = outcome.market_id;
+      
+      // Calculate orderbook metrics
+      const metrics = this.calculateOrderbookMetrics(bids, asks);
+      
+      // Store orderbook metrics in Redis sliding window (60 minutes, max 3600 data points)
+      await RedisSlidingWindow.add(
+        `orderbook:${assetId}`,
+        {
+          ...metrics,
+          timestamp,
+          marketId,
+          outcomeId: outcome.id,
+        },
+        3600000, // 60 minutes
+        3600 // Max 3600 data points (1 per second)
+      );
+      
+      // Check for liquidity vacuum (spread > 10 cents)
+      if (metrics.spread > 0.10) {
+        console.log(`[Liquidity Vacuum] Asset ${assetId} (Market: ${marketId}): Spread widened to ${(metrics.spread * 100).toFixed(2)} cents`);
+      }
+      
+      // Check for depth drop (80% drop in <1 minute)
+      // We'll compare with previous depth in the anomaly detection phase
+      
+    } catch (error) {
+      console.error('Error handling orderbook event:', error);
+    }
+  }
+
+  /**
+   * Calculate orderbook metrics: spread, depth, etc.
+   */
+  private calculateOrderbookMetrics(
+    bids: Array<{ price: number; size: number }>,
+    asks: Array<{ price: number; size: number }>
+  ): {
+    spread: number; // bid-ask spread in cents
+    spreadPercent: number; // spread as % of mid-price
+    depth2Percent: number; // Total depth within 2% of mid-price
+    bestBid: number;
+    bestAsk: number;
+    midPrice: number;
+    totalBidDepth: number; // Total depth on bid side
+    totalAskDepth: number; // Total depth on ask side
+  } {
+    if (bids.length === 0 || asks.length === 0) {
+      return {
+        spread: 0,
+        spreadPercent: 0,
+        depth2Percent: 0,
+        bestBid: 0,
+        bestAsk: 0,
+        midPrice: 0,
+        totalBidDepth: 0,
+        totalAskDepth: 0,
+      };
+    }
+    
+    const bestBid = bids[0].price;
+    const bestAsk = asks[0].price;
+    const midPrice = (bestBid + bestAsk) / 2;
+    const spread = bestAsk - bestBid;
+    const spreadPercent = midPrice > 0 ? (spread / midPrice) * 100 : 0;
+    
+    // Calculate depth within 2% of mid-price
+    const twoPercentRange = midPrice * 0.02;
+    const minPrice = midPrice - twoPercentRange;
+    const maxPrice = midPrice + twoPercentRange;
+    
+    let depth2Percent = 0;
+    
+    // Sum bid depth within range
+    for (const bid of bids) {
+      if (bid.price >= minPrice && bid.price <= midPrice) {
+        depth2Percent += bid.size;
+      }
+    }
+    
+    // Sum ask depth within range
+    for (const ask of asks) {
+      if (ask.price >= midPrice && ask.price <= maxPrice) {
+        depth2Percent += ask.size;
+      }
+    }
+    
+    // Calculate total depth on each side
+    const totalBidDepth = bids.reduce((sum, bid) => sum + bid.size, 0);
+    const totalAskDepth = asks.reduce((sum, ask) => sum + ask.size, 0);
+    
+    return {
+      spread,
+      spreadPercent,
+      depth2Percent,
+      bestBid,
+      bestAsk,
+      midPrice,
+      totalBidDepth,
+      totalAskDepth,
+    };
+  }
+
+  /**
    * Store price history in database
    */
   private async storePriceHistory(priceData: {

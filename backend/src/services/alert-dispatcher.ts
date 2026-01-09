@@ -243,8 +243,9 @@ export class AlertDispatcher {
         const priceChange = alert.data.priceChange || 0;
         const absoluteChange = alert.data.absoluteChange || 0;
         const volumeZScore = alert.data.volumeZScore || 0;
+        const insiderOutcomeInfo = marketInfo.outcomeName ? ` | Outcome: ${marketInfo.outcomeName}` : '';
         baseFormatted.title = '🚨 INSIDER MOVE Detected';
-        baseFormatted.message = `Price moved ${priceChange.toFixed(2)}% (${(absoluteChange * 100).toFixed(2)}pp) in <1min with ${volumeZScore.toFixed(2)}σ volume spike`;
+        baseFormatted.message = `Price moved ${priceChange.toFixed(2)}% (${(absoluteChange * 100).toFixed(2)}pp) in <1min with ${volumeZScore.toFixed(2)}σ volume spike${insiderOutcomeInfo}`;
         baseFormatted.metrics = {
           priceChange,
           absoluteChange,
@@ -274,8 +275,9 @@ export class AlertDispatcher {
 
       case 'whale_trade':
         const tradeSize = alert.data.tradeSize || 0;
+        const outcomeInfo = marketInfo.outcomeName ? ` | Outcome: ${marketInfo.outcomeName}` : '';
         baseFormatted.title = '🐋 WHALE TRADE Detected';
-        baseFormatted.message = `Large trade detected: $${tradeSize.toLocaleString()} USDC`;
+        baseFormatted.message = `Large trade detected: $${tradeSize.toLocaleString()} USDC${outcomeInfo}`;
         baseFormatted.metrics = {
           tradeSize,
         };
@@ -285,15 +287,16 @@ export class AlertDispatcher {
         const volZScore = alert.data.zScore || 0;
         const currentVolume = alert.data.currentVolume || 0;
         const avgVolume = alert.data.averageVolume || 0;
+        const volOutcomeInfo = marketInfo.outcomeName ? ` | Outcome: ${marketInfo.outcomeName}` : '';
         
         // Only show meaningful alerts
         if (volZScore < 0.1 || currentVolume < 100) {
           // Skip formatting for meaningless alerts (shouldn't happen due to validation, but just in case)
           baseFormatted.title = '📈 VOLUME ACCELERATION Detected';
-          baseFormatted.message = `Volume activity detected (filtered - not significant)`;
+          baseFormatted.message = `Volume activity detected (filtered - not significant)${volOutcomeInfo}`;
         } else {
           baseFormatted.title = '📈 VOLUME ACCELERATION Detected';
-          baseFormatted.message = `Volume spike: ${volZScore.toFixed(2)}σ above average | Current: $${currentVolume.toLocaleString()} | Average: $${avgVolume.toLocaleString()}`;
+          baseFormatted.message = `Volume spike: ${volZScore.toFixed(2)}σ above average | Current: $${currentVolume.toLocaleString()} | Average: $${avgVolume.toLocaleString()}${volOutcomeInfo}`;
         }
         baseFormatted.metrics = {
           volumeZScore: volZScore,

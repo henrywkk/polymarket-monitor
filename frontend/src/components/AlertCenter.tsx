@@ -132,18 +132,39 @@ export const AlertCenter = ({ position = 'top-right' }: AlertCenterProps) => {
 
   // Format timestamp
   const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+    try {
+      const date = new Date(timestamp);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid timestamp:', timestamp);
+        return 'Unknown time';
+      }
+      
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      
+      // Handle negative differences (future dates) or very large differences (likely data error)
+      if (diffMs < 0) {
+        return 'Just now'; // Future date, treat as now
+      }
+      if (diffMs > 86400000 * 365) {
+        // More than a year old, show actual date
+        return date.toLocaleDateString();
+      }
+      
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString();
+    } catch (error) {
+      console.error('Error formatting timestamp:', error, timestamp);
+      return 'Unknown time';
+    }
   };
 
   const positionClasses = {
@@ -300,7 +321,13 @@ const AlertItem = ({
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-            <p className={`text-xs line-clamp-2 mb-2 ${isRead ? 'text-slate-500' : 'text-slate-400'}`}>{alert.message}</p>
+            <p className={`text-xs mb-2 ${isRead ? 'text-slate-500' : 'text-slate-400'}`} style={{ 
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              wordBreak: 'break-word'
+            }}>{alert.message}</p>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-slate-500">{formatTimestamp(alert.timestamp)}</span>
               {alert.polymarketUrl && (

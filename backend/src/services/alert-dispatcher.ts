@@ -423,7 +423,7 @@ export class AlertDispatcher {
                 [`%${parentPattern}%`]
               );
               
-              if (parentResult.rows.length > 0) {
+              if (parentResult.rows.length > 0 && parentResult.rows[0].slug) {
                 eventSlug = parentResult.rows[0].slug;
                 console.log(`[Alert Dispatcher] Found parent event slug via database: ${eventSlug} for market ${marketId}`);
                 await redis.setex(cacheKey, 86400, eventSlug);

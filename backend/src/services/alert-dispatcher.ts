@@ -396,7 +396,7 @@ export class AlertDispatcher {
           
           if (parentResult.rows.length > 0) {
             const foundSlug = parentResult.rows[0].slug;
-            if (foundSlug) {
+            if (foundSlug && typeof foundSlug === 'string') {
               eventSlug = foundSlug;
               console.log(`[Alert Dispatcher] Found parent event slug via question_id: ${eventSlug} for market ${marketId}`);
               await redis.setex(cacheKey, 86400, foundSlug);
@@ -419,7 +419,7 @@ export class AlertDispatcher {
             if (anyMarketResult.rows.length > 0) {
               const foundSlug = anyMarketResult.rows[0].slug;
               // Only use if it's not the same as stored slug (which is likely outcome-specific)
-              if (foundSlug && foundSlug !== storedSlug) {
+              if (foundSlug && typeof foundSlug === 'string' && foundSlug !== storedSlug) {
                 eventSlug = foundSlug;
                 console.log(`[Alert Dispatcher] Found market slug via question_id: ${eventSlug} for market ${marketId}`);
                 await redis.setex(cacheKey, 86400, foundSlug);

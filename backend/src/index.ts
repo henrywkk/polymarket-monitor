@@ -110,12 +110,34 @@ setSyncService(marketSync);
 // Start server
 const startServer = async () => {
   try {
-    // Test database connection
-    await pool.query('SELECT NOW()');
-    console.log('Database connected successfully');
+    // Test database connection with retry logic
+    let dbConnected = false;
+    const maxRetries = 5;
+    const retryDelay = 3000; // 3 seconds
     
-        // Initialize database tables
-        await initializeDatabase();
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await pool.query('SELECT NOW()');
+        console.log('Database connected successfully');
+        dbConnected = true;
+        break;
+      } catch (error) {
+        if (attempt < maxRetries) {
+          console.log(`Database connection attempt ${attempt}/${maxRetries} failed, retrying in ${retryDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        } else {
+          console.error(`Database connection failed after ${maxRetries} attempts:`, error);
+          throw error;
+        }
+      }
+    }
+    
+    if (!dbConnected) {
+      throw new Error('Failed to connect to database after retries');
+    }
+    
+    // Initialize database tables
+    await initializeDatabase();
 
         // Run initial data maintenance (prune old history)
         marketIngestion.pruneOldHistory(7).catch(err => {

@@ -83,7 +83,7 @@ const MarketRow = ({
 
   return (
     <>
-      {/* Row 1: Market Name (spans all columns) */}
+      {/* Row 1: Market Name and ID - aligned with probability column */}
       <motion.tr 
         layout
         initial={{ opacity: 0 }}
@@ -95,19 +95,22 @@ const MarketRow = ({
         transition={{ duration: 0.3 }}
         className="group hover:bg-slate-800/20 transition-all border-b border-slate-800/40"
       >
-        <td colSpan={9} className="px-8 py-4">
-          <div className="flex items-center justify-between">
+        <td className="px-8 py-4">
+          {/* Empty - aligns with empty cell in row 2 */}
+        </td>
+        <td className="px-8 py-4" colSpan={8}>
+          <div className="flex items-center gap-3">
             <Link 
               to={`/markets/${market.id}`}
-              className="text-white font-bold text-base leading-tight group-hover:text-blue-400 transition-colors flex-1 min-w-0 pr-4"
+              className="text-white font-bold text-base leading-tight group-hover:text-blue-400 transition-colors flex-1 min-w-0"
             >
               {market.question}
             </Link>
-            <span className="text-slate-500 text-xs font-mono uppercase tracking-tighter whitespace-nowrap">{market.id}</span>
+            <span className="text-slate-500 text-xs font-mono uppercase tracking-tighter whitespace-nowrap flex-shrink-0">{market.id}</span>
           </div>
         </td>
       </motion.tr>
-      {/* Row 2: All other data */}
+      {/* Row 2: All other data - Probability aligns with market name */}
       <motion.tr 
         layout
         initial={{ opacity: 0 }}
@@ -120,7 +123,7 @@ const MarketRow = ({
         className="group hover:bg-slate-800/10 transition-all border-b border-slate-800/40"
       >
         <td className="px-8 py-4">
-          {/* Empty - market name is in row above */}
+          {/* Empty - aligns with empty cell in row 1 */}
         </td>
         <td className="px-8 py-4 text-right">
           <div className="flex flex-col items-end">
@@ -251,14 +254,21 @@ export const MarketList = () => {
     return () => clearTimeout(timer);
   }, [searchInput, handleSearchChange]);
 
-  // Calculate stats - use global stats for accurate counts
+  // Calculate stats - use category-specific counts when filtered
   const stats = useMemo(() => {
     if (!data?.data) return { total: 0, active: 0, avgVolume: 0 };
     
     const markets = data.data;
     
-    // Use global stats for accurate active market count
-    const activeCount = globalStats?.markets.active || 0;
+    // If category is filtered, use category-specific active count
+    // Otherwise use global active count
+    let activeCount: number;
+    if (category !== 'All' && categoriesData?.data) {
+      const categoryData = categoriesData.data.find(cat => cat.name === category);
+      activeCount = categoryData?.activeCount || 0;
+    } else {
+      activeCount = globalStats?.markets.active || 0;
+    }
     
     // Calculate average volume from current page markets
     const totalVolume = markets.reduce((sum, m) => 
@@ -267,11 +277,11 @@ export const MarketList = () => {
     const avgVolume = markets.length > 0 ? totalVolume / markets.length : 0;
 
     return {
-      total: data.pagination.total, // Total markets in database
-      active: activeCount, // Active markets from global stats (accurate)
+      total: data.pagination.total, // Total markets (filtered by category if applicable)
+      active: activeCount, // Active markets (category-specific if filtered)
       avgVolume,
     };
-  }, [data, globalStats]);
+  }, [data, globalStats, category, categoriesData]);
 
   const formatVolume = (volume: number | undefined) => {
     if (volume === undefined || volume === null) return 'N/A';
@@ -390,87 +400,88 @@ export const MarketList = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
-      {/* Top Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-4xl font-black tracking-tight text-white">
-              PolyMonitor<span className="text-blue-500">PRO</span>
-            </h1>
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border bg-purple-500/10 text-purple-400 border-purple-500/20">
-              BETA
-            </div>
+      {/* Top Bar - Title and Description */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-1">
+          <h1 className="text-4xl font-black tracking-tight text-white">
+            PolyMonitor<span className="text-blue-500">PRO</span>
+          </h1>
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border bg-purple-500/10 text-purple-400 border-purple-500/20">
+            BETA
           </div>
-          <p className="text-slate-400 text-lg">Institutional-grade prediction market monitoring.</p>
         </div>
+        <p className="text-slate-400 text-lg">Institutional-grade prediction market monitoring.</p>
+      </div>
 
-        {/* Category & Sort Filters */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-          <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex flex-wrap gap-1">
-            {/* Fixed order categories: All, Crypto, Politics, Sports */}
-            {['All', 'Crypto', 'Politics', 'Sports'].map((cat) => (
+      {/* Category Filter - Moved here, above stats */}
+      <div className="mb-6">
+        <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex flex-wrap gap-1">
+          {/* Fixed order categories: All, Crypto, Politics, Sports */}
+          {['All', 'Crypto', 'Politics', 'Sports'].map((cat) => (
+            <button
+              key={cat}
+              onClick={() => {
+                setCategory(cat);
+                setPage(1);
+              }}
+              className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                category === cat 
+                  ? 'bg-blue-600 text-white shadow-lg' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {cat.toUpperCase()}
+            </button>
+          ))}
+          {/* Dynamic categories from API (sorted by active count) */}
+          {categoriesData?.data
+            .filter(cat => !['All', 'Crypto', 'Politics', 'Sports'].includes(cat.name))
+            .slice(0, 6) // Show top 6 dynamic categories
+            .map((cat) => (
               <button
-                key={cat}
+                key={cat.name}
                 onClick={() => {
-                  setCategory(cat);
+                  setCategory(cat.name);
                   setPage(1);
                 }}
                 className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${
-                  category === cat 
+                  category === cat.name 
                     ? 'bg-blue-600 text-white shadow-lg' 
                     : 'text-slate-400 hover:text-white'
                 }`}
+                title={`${cat.activeCount} active, ${cat.marketCount} total`}
               >
-                {cat.toUpperCase()}
+                {cat.name.toUpperCase()}
               </button>
             ))}
-            {/* Dynamic categories from API (sorted by active count) */}
-            {categoriesData?.data
-              .filter(cat => !['All', 'Crypto', 'Politics', 'Sports'].includes(cat.name))
-              .slice(0, 6) // Show top 6 dynamic categories
-              .map((cat) => (
-                <button
-                  key={cat.name}
-                  onClick={() => {
-                    setCategory(cat.name);
-                    setPage(1);
-                  }}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${
-                    category === cat.name 
-                      ? 'bg-blue-600 text-white shadow-lg' 
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                  title={`${cat.activeCount} active, ${cat.marketCount} total`}
-                >
-                  {cat.name.toUpperCase()}
-                </button>
-              ))}
-          </div>
+        </div>
+      </div>
 
-          <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex">
-            {[
-              { id: 'activity', label: 'Activity', icon: Activity },
-              { id: 'liquidity', label: 'Liquidity', icon: Server },
-              { id: 'volume24h', label: '24h Vol', icon: TrendingUp },
-              { id: 'volume', label: 'Total Vol', icon: TrendingUp },
-            ].map((option) => (
-              <button
-                key={option.id}
-                onClick={() => {
-                  setSortBy(option.id);
-                  setPage(1);
-                }}
-                className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
-                  sortBy === option.id 
-                    ? 'bg-slate-700 text-white shadow-lg' 
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <option.icon className="w-4 h-4" />
-                {option.label.toUpperCase()}
-              </button>
-            ))}
-          </div>
+      {/* Sort Filters - Moved to top right */}
+      <div className="flex justify-end mb-6">
+        <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex">
+          {[
+            { id: 'activity', label: 'Activity', icon: Activity },
+            { id: 'liquidity', label: 'Liquidity', icon: Server },
+            { id: 'volume24h', label: '24h Vol', icon: TrendingUp },
+            { id: 'volume', label: 'Total Vol', icon: TrendingUp },
+          ].map((option) => (
+            <button
+              key={option.id}
+              onClick={() => {
+                setSortBy(option.id);
+                setPage(1);
+              }}
+              className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
+                sortBy === option.id 
+                  ? 'bg-slate-700 text-white shadow-lg' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <option.icon className="w-4 h-4" />
+              {option.label.toUpperCase()}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -512,6 +523,7 @@ export const MarketList = () => {
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-900/30">
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest"></th>
+                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Probability</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Vol (24h)</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Total Vol</th>

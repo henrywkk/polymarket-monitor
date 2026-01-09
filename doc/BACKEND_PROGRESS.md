@@ -90,7 +90,7 @@ Frontend WebSocket ← Broadcast Updates
 ### 4. Performance Optimizations ✅
 
 - ✅ **Price history throttling**: Max 1 record/min per outcome (unless >1% price change)
-- ✅ **Automatic data pruning**: 7-day retention policy
+- ✅ **Automatic data pruning**: 1-day (24-hour) retention policy
 - ✅ **Redis caching**: Frequently accessed data
 - ✅ **Database indexes**: On key columns for fast queries
 - ✅ **Rate limiting**: 100 requests/min per IP
@@ -295,7 +295,7 @@ SYNC_INTERVAL_MINUTES=5
 ### Storage Optimization
 - **Before**: 850k records in 10 hours = 440MB
 - **After**: Throttled writes (1/min per outcome or >1% change)
-- **Retention**: Automatic 7-day pruning
+- **Retention**: Automatic 1-day (24-hour) pruning
 - **Result**: Stable storage growth
 
 ### Sync Performance

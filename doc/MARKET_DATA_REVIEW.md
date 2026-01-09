@@ -151,7 +151,7 @@ We fetch markets from multiple categories to ensure diversity:
    - Used for alert detection (volume spikes, etc.)
 
 4. **Maintenance Tasks**: Every 72 sync cycles (~6 hours)
-   - Prunes old price history (keeps last 7 days)
+   - Prunes old price history (keeps last 1 day / 24 hours)
    - Cleans up database
 
 ### **Real-Time Updates (WebSocket)**
@@ -243,7 +243,7 @@ We fetch markets from multiple categories to ensure diversity:
 - `PERSIST_INTERVAL_MS`: 60,000 (1 minute)
 - `PRICE_CHANGE_THRESHOLD`: 0.01 (1%)
 - `MAX_MARKETS_PER_SYNC`: 500
-- `PRICE_HISTORY_RETENTION_DAYS`: 7
+- `PRICE_HISTORY_RETENTION_DAYS`: 1
 
 ---
 

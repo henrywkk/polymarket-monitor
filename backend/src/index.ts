@@ -170,7 +170,7 @@ const startServer = async () => {
     // Server will start even if Redis is unavailable (with degraded functionality)
 
         // Run initial data maintenance (prune old history)
-        marketIngestion.pruneOldHistory(7).catch(err => {
+        marketIngestion.pruneOldHistory(1).catch(err => {
           console.error('Error during initial pruning:', err);
         });
 

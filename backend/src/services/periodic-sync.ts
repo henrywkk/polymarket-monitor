@@ -93,7 +93,7 @@ export class PeriodicSyncService {
       // Assuming 5-minute interval, 72 syncs = 6 hours
       if (this.stats.totalSyncs % 72 === 0) {
         console.log('[Periodic Sync] Running maintenance tasks...');
-        await this.syncService.ingestionService.pruneOldHistory(7); // Keep 7 days
+        await this.syncService.ingestionService.pruneOldHistory(1); // Keep 1 day (24 hours)
       }
 
       console.log(`[Periodic Sync] Completed: ${synced} markets synced in ${duration}ms`);

@@ -1143,9 +1143,9 @@ export class MarketIngestionService {
 
   /**
    * Prune old price history records to save storage space
-   * Default: keeps data for the last 7 days
+   * Default: keeps data for the last 1 day (24 hours)
    */
-  async pruneOldHistory(daysToKeep: number = 7): Promise<number> {
+  async pruneOldHistory(daysToKeep: number = 1): Promise<number> {
     try {
       console.log(`Pruning price history older than ${daysToKeep} days...`);
       const result = await query(

@@ -84,7 +84,7 @@
 
 3. **Performance Optimizations**
    - ✅ Price history throttling: Max 1 record/min per outcome (or >1% change)
-   - ✅ Automatic data pruning: 7-day retention policy
+   - ✅ Automatic data pruning: 1-day (24-hour) retention policy
    - ✅ Redis caching: 1-hour TTL for current prices
    - ✅ Database indexes: On category, end_date, market_id, timestamp
    - ✅ Rate limiting: 100 requests/min per IP
@@ -100,7 +100,7 @@
 
 - **Markets Synced**: 385+ markets
 - **Categories**: Crypto (248), Politics (65), Sports (51), + others
-- **Price History**: Throttled writes, 7-day retention
+- **Price History**: Throttled writes, 1-day (24-hour) retention
 - **Storage**: Stable growth (optimized from 440MB explosion)
 - **Real-time Updates**: ✅ Active and flowing
 
@@ -324,7 +324,7 @@ React Components → Display with real-time updates
 2. ✅ Receives real-time price updates via WebSocket
 3. ✅ Calculates liquidity scores for all markets
 4. ✅ Calculates expected values for multi-outcome markets
-5. ✅ Stores price history (throttled, 7-day retention)
+5. ✅ Stores price history (throttled, 1-day retention)
 6. ✅ Broadcasts updates to connected frontend clients
 7. ✅ Provides comprehensive API for frontend consumption
 

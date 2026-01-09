@@ -198,6 +198,23 @@ export class MarketIngestionService {
    */
   async upsertMarket(market: Omit<Market, 'createdAt' | 'updatedAt'>): Promise<void> {
     try {
+      // Check if a market with the same slug but different ID exists
+      const existingMarket = await query(
+        'SELECT id FROM markets WHERE slug = $1 AND id != $2',
+        [market.slug, market.id]
+      );
+
+      let finalSlug = market.slug;
+      if (existingMarket.rows.length > 0) {
+        // Slug conflict: append market ID to make it unique
+        console.warn(`[Upsert Market] Slug conflict for "${market.slug}", appending market ID to make it unique`);
+        finalSlug = `${market.slug}-${market.id.substring(0, 8)}`;
+      }
+
+      // Cap activity_score to fit DECIMAL(10, 5) - max value is 99999.99999
+      // But activity score should be 0-100, so we cap at 100 for safety
+      const activityScore = Math.min(Math.max(market.activityScore || 0, 0), 100);
+
       await query(
         `INSERT INTO markets (id, question, slug, category, end_date, image_url, volume, volume_24h, liquidity, activity_score)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -216,14 +233,14 @@ export class MarketIngestionService {
         [
           market.id,
           market.question,
-          market.slug,
+          finalSlug,
           market.category,
           market.endDate,
           market.imageUrl,
           market.volume || 0,
           market.volume24h || 0,
           market.liquidity || 0,
-          market.activityScore || 0,
+          activityScore,
         ]
       );
       // Removed verbose logging to reduce Railway log rate limit
@@ -569,8 +586,8 @@ export class MarketIngestionService {
         }
       }
       
-      // Cap at 100
-      activityScore = Math.min(100, activityScore);
+      // Cap at 100 (activity score should be 0-100, but also ensure it fits DECIMAL(10, 5))
+      activityScore = Math.min(100, Math.max(0, activityScore));
       
       await query(
         `UPDATE markets 
@@ -709,8 +726,8 @@ export class MarketIngestionService {
       let activityScore = Math.min(recentUpdates / 100 * 50, 50);
       activityScore += 50; // Trade just happened - strong activity signal
       
-      // Cap at 100
-      activityScore = Math.min(100, activityScore);
+      // Cap at 100 (activity score should be 0-100, but also ensure it fits DECIMAL(10, 5))
+      activityScore = Math.min(100, Math.max(0, activityScore));
       
       await query(
         `UPDATE markets 

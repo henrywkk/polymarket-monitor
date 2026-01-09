@@ -61,7 +61,7 @@ export class AlertDispatcher {
   /**
    * Start processing alerts from queue
    */
-  start(): void {
+  async start(): Promise<void> {
     if (this.isRunning) {
       console.log('[Alert Dispatcher] Already running');
       return;
@@ -69,6 +69,9 @@ export class AlertDispatcher {
 
     this.isRunning = true;
     console.log('[Alert Dispatcher] Starting alert processing...');
+
+    // Clear old alerts from queue on startup to prevent backlog
+    await this.clearOldAlertsOnStartup();
 
     // Process alerts immediately, then poll periodically
     this.processQueue().catch(err => {
@@ -111,12 +114,64 @@ export class AlertDispatcher {
   }
 
   /**
+   * Clear old alerts from queue on startup
+   * This prevents processing backlog of stale alerts
+   */
+  private async clearOldAlertsOnStartup(): Promise<void> {
+    try {
+      const now = Date.now();
+      let clearedCount = 0;
+      const maxChecks = 1000; // Check up to 1000 alerts
+
+      console.log('[Alert Dispatcher] Clearing old alerts from queue on startup...');
+
+      // Process from the tail (oldest) and remove old ones
+      for (let i = 0; i < maxChecks; i++) {
+        // Peek at the last alert in the queue (oldest)
+        const alertJson = await redis.lindex(this.ALERT_QUEUE_KEY, -1);
+        
+        if (!alertJson) {
+          break; // Queue is empty
+        }
+
+        try {
+          const alert: AlertEvent = JSON.parse(alertJson);
+          const alertAge = now - alert.timestamp;
+
+          if (alertAge > this.MAX_ALERT_AGE_MS) {
+            // Remove this old alert from the tail
+            await redis.rpop(this.ALERT_QUEUE_KEY);
+            clearedCount++;
+          } else {
+            // Found a recent alert, stop clearing (we check from tail, but process from head)
+            break;
+          }
+        } catch (error) {
+          // Invalid JSON, remove it
+          await redis.rpop(this.ALERT_QUEUE_KEY);
+          clearedCount++;
+        }
+      }
+
+      if (clearedCount > 0) {
+        console.log(`[Alert Dispatcher] Cleared ${clearedCount} old alerts from queue on startup`);
+      } else {
+        console.log('[Alert Dispatcher] No old alerts to clear');
+      }
+    } catch (error) {
+      console.error('[Alert Dispatcher] Error clearing old alerts on startup:', error);
+    }
+  }
+
+  /**
    * Process alerts from Redis queue
+   * Processes from the head (newest first) to prioritize recent alerts
    */
   private async processQueue(): Promise<void> {
     try {
-      // Pop alert from queue (right pop for FIFO)
-      const alertJson = await redis.rpop(this.ALERT_QUEUE_KEY);
+      // Pop alert from queue (left pop - processes newest first)
+      // This ensures new alerts are processed immediately, not blocked by old alerts
+      const alertJson = await redis.lpop(this.ALERT_QUEUE_KEY);
 
       if (!alertJson) {
         return; // No alerts in queue
@@ -388,7 +443,7 @@ export class AlertDispatcher {
             await redis.rpop(this.ALERT_QUEUE_KEY);
             removedCount++;
           } else {
-            // Found a recent alert, stop cleanup (queue is ordered oldest to newest)
+            // Found a recent alert, stop cleanup (we check from tail, but process from head)
             break;
           }
         } catch (error) {

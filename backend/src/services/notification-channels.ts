@@ -80,6 +80,15 @@ export class WebhookChannel implements NotificationChannel {
   }
 
   private buildPayload(alert: FormattedAlert): any {
+    // Check if this is a Discord webhook (URL contains discord.com/api/webhooks)
+    const isDiscordWebhook = this.url.includes('discord.com/api/webhooks') || 
+                            this.url.includes('discordapp.com/api/webhooks');
+
+    if (isDiscordWebhook) {
+      return this.buildDiscordPayload(alert);
+    }
+
+    // Default generic webhook format
     return {
       alert: {
         type: alert.rawAlert.type,
@@ -95,6 +104,112 @@ export class WebhookChannel implements NotificationChannel {
       },
       metrics: alert.metrics,
       signature: this.secret ? this.generateSignature(alert) : undefined,
+    };
+  }
+
+  /**
+   * Build Discord webhook payload with embeds
+   */
+  private buildDiscordPayload(alert: FormattedAlert): any {
+    // Map severity to Discord color (hex)
+    const severityColors: Record<string, number> = {
+      'LOW': 0x3498db,      // Blue
+      'MEDIUM': 0xf39c12,   // Orange
+      'HIGH': 0xe74c3c,     // Red
+      'CRITICAL': 0x9b59b6, // Purple
+    };
+
+    const color = severityColors[alert.severity.toUpperCase()] || 0x95a5a6; // Default gray
+
+    // Map alert type to emoji
+    const alertEmojis: Record<string, string> = {
+      'insider_move': '🚨',
+      'fat_finger': '⚠️',
+      'liquidity_vacuum': '💧',
+      'whale_trade': '🐋',
+      'volume_acceleration': '📈',
+    };
+
+    const emoji = alertEmojis[alert.rawAlert.type] || '🔔';
+
+    // Build fields for metrics
+    const fields: any[] = [];
+
+    if (alert.metrics.priceChange !== undefined) {
+      fields.push({
+        name: 'Price Change',
+        value: `${alert.metrics.priceChange > 0 ? '+' : ''}${alert.metrics.priceChange.toFixed(2)}%`,
+        inline: true,
+      });
+    }
+
+    if (alert.metrics.absoluteChange !== undefined) {
+      fields.push({
+        name: 'Absolute Change',
+        value: `${(alert.metrics.absoluteChange * 100).toFixed(2)}pp`,
+        inline: true,
+      });
+    }
+
+    if (alert.metrics.volumeZScore !== undefined) {
+      fields.push({
+        name: 'Volume Z-Score',
+        value: `${alert.metrics.volumeZScore.toFixed(2)}σ`,
+        inline: true,
+      });
+    }
+
+    if (alert.metrics.tradeSize !== undefined) {
+      fields.push({
+        name: 'Trade Size',
+        value: `$${alert.metrics.tradeSize.toLocaleString()} USDC`,
+        inline: true,
+      });
+    }
+
+    if (alert.metrics.spread !== undefined) {
+      fields.push({
+        name: 'Spread',
+        value: `${(alert.metrics.spread * 100).toFixed(2)} cents`,
+        inline: true,
+      });
+    }
+
+    if (alert.marketInfo.category) {
+      fields.push({
+        name: 'Category',
+        value: alert.marketInfo.category,
+        inline: true,
+      });
+    }
+
+    // Build description with market info
+    let description = alert.message;
+    if (alert.marketInfo.marketName) {
+      description += `\n\n**Market:** ${alert.marketInfo.marketName}`;
+      if (alert.marketInfo.outcomeName) {
+        description += ` (${alert.marketInfo.outcomeName})`;
+      }
+    }
+
+    const embed: any = {
+      title: `${emoji} ${alert.title}`,
+      description: description,
+      color: color,
+      fields: fields.length > 0 ? fields : undefined,
+      timestamp: alert.timestamp,
+      footer: {
+        text: `Polymarket Monitor • ${alert.rawAlert.type}`,
+      },
+    };
+
+    // Add URL if available
+    if (alert.polymarketUrl) {
+      embed.url = alert.polymarketUrl;
+    }
+
+    return {
+      embeds: [embed],
     };
   }
 

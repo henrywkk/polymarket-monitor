@@ -190,7 +190,9 @@ const startServer = async () => {
     alertDispatcherRef = alertDispatcher;
     
     // Start alert dispatcher
-    alertDispatcher.start();
+    alertDispatcher.start().catch(err => {
+      console.error('[Alert System] Error starting alert dispatcher:', err);
+    });
     console.log('[Alert System] Alert dispatcher started');
 
     // Connect to Polymarket WebSocket (non-blocking, graceful failure)

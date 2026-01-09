@@ -35,6 +35,22 @@ export class MarketIngestionService {
     this.orderbookRefreshInterval = setInterval(async () => {
       await this.refreshOrderbooksForActiveMarkets();
     }, 60000); // 60 seconds
+    
+    // Store interval reference for potential cleanup (e.g., on shutdown)
+    // This prevents the interval from being garbage collected
+    if (this.orderbookRefreshInterval) {
+      // Interval is active and stored
+    }
+  }
+  
+  /**
+   * Stop periodic orderbook refresh
+   */
+  public stopOrderbookRefresh(): void {
+    if (this.orderbookRefreshInterval) {
+      clearInterval(this.orderbookRefreshInterval);
+      this.orderbookRefreshInterval = undefined;
+    }
   }
 
   /**

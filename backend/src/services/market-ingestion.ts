@@ -539,7 +539,8 @@ export class MarketIngestionService {
             outcome.id,
             outcome.token_id,
             midPrice,
-            recentVolume
+            recentVolume,
+            priceVelocityAlert // Pass the already-detected price velocity alert
           );
 
           if (insiderMoveAlert) {

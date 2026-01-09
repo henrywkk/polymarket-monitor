@@ -133,8 +133,30 @@ export class AnomalyDetector {
       const percentageChange = calculatePercentageChange(lastPrice, currentPrice);
 
       if (absoluteChange > this.PRICE_VELOCITY_THRESHOLD) {
+        // Check for cooldown to prevent spam alerts for the same market/outcome
+        const cooldownKey = `alert_cooldown:${marketId}:${outcomeId}`;
+        const cooldownData = await redis.get(cooldownKey);
+        
+        if (cooldownData) {
+          // Still in cooldown period, update price but don't generate alert
+          // This prevents spam when large orders sweep through multiple price levels
+          await redis.setex(lastPriceKey, 120, JSON.stringify({
+            price: currentPrice,
+            timestamp: Date.now(),
+          }));
+          return null;
+        }
+
+        // Update stored price immediately after detecting velocity
+        // This ensures subsequent price changes are compared against the new price, not the old one
+        // This is critical to prevent spam alerts when orders sweep through multiple levels
+        await redis.setex(lastPriceKey, 120, JSON.stringify({
+          price: currentPrice,
+          timestamp: Date.now(),
+        }));
+
         // Price moved >15% in <1min - potential insider move
-        // But we need to also check volume acceleration (done in detectInsiderMove)
+        // Note: Cooldown will be set in detectInsiderMove after confirming both price and volume
         return {
           type: 'insider_move',
           marketId,
@@ -265,19 +287,24 @@ export class AnomalyDetector {
 
   /**
    * Detect insider move: Price >15% in <1min + volume acceleration (3σ)
+   * 
+   * @param priceVelocityAlert - The price velocity alert that was already detected
+   *                             (pass this to avoid duplicate detection and cooldown issues)
    */
   async detectInsiderMove(
     marketId: string,
     outcomeId: string,
     tokenId: string,
     currentPrice: number,
-    currentVolume: number
+    currentVolume: number,
+    priceVelocityAlert: AlertEvent | null
   ): Promise<AlertEvent | null> {
-    // Check price velocity first
-    const priceVelocityAlert = await this.detectPriceVelocity(marketId, outcomeId, tokenId, currentPrice);
-    
+    // If no price velocity alert provided, check it now
     if (!priceVelocityAlert) {
-      return null; // No price velocity anomaly
+      priceVelocityAlert = await this.detectPriceVelocity(marketId, outcomeId, tokenId, currentPrice);
+      if (!priceVelocityAlert) {
+        return null; // No price velocity anomaly
+      }
     }
 
     // Check volume acceleration
@@ -286,6 +313,10 @@ export class AnomalyDetector {
     if (!volumeAccelerationAlert) {
       return null; // No volume acceleration
     }
+
+    // Set cooldown after confirming insider move to prevent spam
+    const cooldownKey = `alert_cooldown:${marketId}:${outcomeId}`;
+    await redis.setex(cooldownKey, 30, '1');
 
     // Both conditions met - insider move detected
     return {

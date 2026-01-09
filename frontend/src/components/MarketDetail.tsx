@@ -427,16 +427,30 @@ export const MarketDetail = () => {
       )}
 
       {/* Orderbook Metrics */}
-      {orderbookData && orderbookData.byOutcome && Object.keys(orderbookData.byOutcome).length > 0 && (
-        <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-6 mt-6">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5" />
-            Orderbook Metrics
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Object.entries(orderbookData.byOutcome).map(([outcomeName, metrics]) => {
-              const latest = Array.isArray(metrics) && metrics.length > 0 ? metrics[0] : null;
-              if (!latest) return null;
+      {orderbookData && orderbookData.byOutcome && Object.keys(orderbookData.byOutcome).length > 0 && (() => {
+        // Filter out invalid orderbook data (spread > 50% or invalid prices)
+        const validOutcomes = Object.entries(orderbookData.byOutcome).filter(([outcomeName, metrics]) => {
+          const latest = Array.isArray(metrics) && metrics.length > 0 ? metrics[0] : null;
+          if (!latest) return false;
+          // Validate: spread should be reasonable, prices should be between 0 and 1
+          const isValid = latest.spreadPercent <= 50 && 
+                         latest.bestBid > 0 && latest.bestAsk > 0 && 
+                         latest.bestBid < 1 && latest.bestAsk < 1;
+          return isValid;
+        });
+        
+        if (validOutcomes.length === 0) return null;
+        
+        return (
+          <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-6 mt-6">
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+              <Activity className="w-5 h-5" />
+              Orderbook Metrics
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {validOutcomes.map(([outcomeName, metrics]) => {
+                const latest = Array.isArray(metrics) && metrics.length > 0 ? metrics[0] : null;
+                if (!latest) return null;
               
               return (
                 <div key={outcomeName} className="bg-slate-900/50 rounded-xl p-4 border border-slate-800/60">
@@ -473,10 +487,11 @@ export const MarketDetail = () => {
                   </div>
                 </div>
               );
-            })}
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Recent Trades */}
       {(realtimeTrades.length > 0 || (tradeHistory && tradeHistory.data.length > 0)) && (

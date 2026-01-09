@@ -175,6 +175,8 @@ export class PolymarketRestClient {
     tagSlug?: string;
     active?: boolean;
     closed?: boolean;
+    sortBy?: 'volume' | 'volume24hr' | 'liquidity' | 'created_at';
+    order?: 'asc' | 'desc';
   }): Promise<PolymarketMarket[]> {
     try {
       // Try Gamma API /events first (supports tag_id), then fallback to other endpoints
@@ -227,6 +229,14 @@ export class PolymarketRestClient {
             requestParams.closed = params.closed;
           } else {
             requestParams.closed = false; // Default to non-closed markets
+          }
+          
+          // Add sorting if supported (Gamma API may support sort_by)
+          if (params?.sortBy) {
+            requestParams.sort_by = params.sortBy;
+            if (params?.order) {
+              requestParams.order = params.order;
+            }
           }
         }
 

@@ -17,6 +17,7 @@ import { initializeDatabase } from './db/init-db';
 import { PolymarketRestClient } from './services/polymarket-rest';
 import { MarketSyncService } from './services/market-sync';
 import { PeriodicSyncService } from './services/periodic-sync';
+import { HighVolumeDiscoveryService } from './services/high-volume-discovery';
 
 dotenv.config();
 
@@ -101,6 +102,11 @@ marketIngestion.setMarketSyncService(marketSync);
 const syncIntervalMinutes = parseInt(process.env.SYNC_INTERVAL_MINUTES || '5', 10);
 const periodicSync = new PeriodicSyncService(marketSync, syncIntervalMinutes);
 
+// Initialize high-volume discovery service
+// Default to 30 minutes, configurable via HIGH_VOLUME_DISCOVERY_INTERVAL_MINUTES env var
+const discoveryIntervalMinutes = parseInt(process.env.HIGH_VOLUME_DISCOVERY_INTERVAL_MINUTES || '30', 10);
+const highVolumeDiscovery = new HighVolumeDiscoveryService(restClient, marketSync);
+
 // Set WebSocket client reference for health check
 setWebSocketClient(wsClient);
 
@@ -155,6 +161,10 @@ const startServer = async () => {
     periodicSync.start();
     console.log(`Periodic sync started (interval: ${syncIntervalMinutes} minutes)`);
 
+    // Start high-volume market discovery (runs in background)
+    highVolumeDiscovery.start(discoveryIntervalMinutes);
+    console.log(`High-volume discovery started (interval: ${discoveryIntervalMinutes} minutes)`);
+
     // Connect to Polymarket WebSocket (non-blocking, graceful failure)
     wsClient.connect().then(() => {
       console.log('Polymarket WebSocket client connected');
@@ -177,6 +187,7 @@ const startServer = async () => {
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   periodicSync.stop();
+  highVolumeDiscovery.stop();
   wsClient.disconnect();
   pool.end();
   process.exit(0);
@@ -185,6 +196,7 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
   periodicSync.stop();
+  highVolumeDiscovery.stop();
   wsClient.disconnect();
   pool.end();
   process.exit(0);

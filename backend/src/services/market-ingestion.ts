@@ -1069,12 +1069,21 @@ export class MarketIngestionService {
         }
       }
 
-      // Step 4: Sync the market to database
+      // Step 4: Check if market is high-volume (sync even if restricted)
+      const volume24h = parseFloat(pmMarket.volume24h || '0');
+      const totalVolume = parseFloat(pmMarket.volume || '0');
+      const HIGH_VOLUME_THRESHOLD = 100000; // $100k 24h volume or $500k total volume
+      
+      if (volume24h >= HIGH_VOLUME_THRESHOLD || totalVolume >= HIGH_VOLUME_THRESHOLD * 5) {
+        console.log(`[Auto-Sync] High-volume market detected: ${volume24h} 24h, ${totalVolume} total - proceeding with sync`);
+      }
+      
+      // Step 5: Sync the market to database
       console.log(`[Auto-Sync] Syncing market ${marketId} to database...`);
       if (this.marketSyncService) {
         await this.marketSyncService.syncMarket(pmMarket);
         
-        // Step 5: Get the database market ID and subscribe
+        // Step 6: Get the database market ID and subscribe
         // Note: The market ID in our database is typically the conditionId or questionId from Polymarket
         const syncedMarket = await query(
           'SELECT id FROM markets WHERE id = $1',

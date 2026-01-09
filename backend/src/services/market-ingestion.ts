@@ -7,15 +7,18 @@ import { redis } from '../config/redis';
 import { WebSocketServer } from './websocket-server';
 import { RedisSlidingWindow } from './redis-storage';
 import { AnomalyDetector } from './anomaly-detector';
+import { MarketSyncService } from './market-sync';
 
 export class MarketIngestionService {
   private wsClient: PolymarketWebSocketClient;
   private restClient: PolymarketRestClient;
   private wsServer?: WebSocketServer;
   private anomalyDetector: AnomalyDetector;
+  private marketSyncService?: MarketSyncService; // Optional reference to sync service for auto-sync
   private activeMarkets = new Map<string, Set<string>>(); // marketId -> Set of outcomeIds
   private lastPersistedPrices = new Map<string, { price: number; timestamp: number }>(); // outcomeId -> { price, timestamp }
   private warnedAssetIds = new Set<string>(); // Track asset_ids we've warned about to reduce log noise
+  private syncingAssetIds = new Set<string>(); // Track asset_ids currently being synced to avoid duplicate syncs
   private orderbookRefreshInterval?: NodeJS.Timeout;
   private PERSIST_INTERVAL_MS = 60000; // Persist at most once per minute per outcome
   private PRICE_CHANGE_THRESHOLD = 0.01; // OR if price changes by more than 1%
@@ -27,6 +30,13 @@ export class MarketIngestionService {
     this.anomalyDetector = new AnomalyDetector();
     this.setupEventHandlers();
     this.startOrderbookRefresh();
+  }
+
+  /**
+   * Set the market sync service reference for auto-syncing unsynced markets
+   */
+  setMarketSyncService(syncService: MarketSyncService): void {
+    this.marketSyncService = syncService;
   }
 
   /**
@@ -347,8 +357,18 @@ export class MarketIngestionService {
 
       if (outcomeResult.rows.length === 0) {
         // Outcome not in database - likely from a market we haven't synced yet
-        // Only warn once per asset_id to reduce log noise
-        if (!this.warnedAssetIds.has(outcomeId)) {
+        // Try to auto-sync the market if we have the sync service available
+        if (this.marketSyncService && !this.syncingAssetIds.has(outcomeId)) {
+          this.syncingAssetIds.add(outcomeId);
+          console.log(`[Auto-Sync] Attempting to sync market for asset_id ${outcomeId}`);
+          
+          // Attempt to sync the market asynchronously (don't block price processing)
+          this.attemptAutoSync(outcomeId).catch((error) => {
+            console.error(`[Auto-Sync] Failed to sync market for asset_id ${outcomeId}:`, error);
+            this.syncingAssetIds.delete(outcomeId);
+          });
+        } else if (!this.warnedAssetIds.has(outcomeId)) {
+          // Only warn once per asset_id to reduce log noise
           console.warn(`Outcome not found for asset_id ${outcomeId} (likely from unsynced market)`);
           this.warnedAssetIds.add(outcomeId);
           // Clear warning after 1 hour to allow re-warning if issue persists
@@ -967,6 +987,91 @@ export class MarketIngestionService {
       }
     } catch (error) {
       console.error(`Error subscribing to markets:`, error);
+    }
+  }
+
+  /**
+   * Attempt to auto-sync a market when we receive price updates for an unsynced market
+   */
+  private async attemptAutoSync(assetId: string): Promise<void> {
+    try {
+      // Step 1: Fetch orderbook to get the market ID (condition_id)
+      const orderbook = await this.restClient.fetchOrderBook(assetId);
+      
+      if (!orderbook || !orderbook.market) {
+        console.warn(`[Auto-Sync] Could not get market ID from orderbook for asset_id ${assetId}`);
+        this.syncingAssetIds.delete(assetId);
+        return;
+      }
+
+      const marketId = orderbook.market; // This is typically the condition_id
+      console.log(`[Auto-Sync] Found market ID ${marketId} for asset_id ${assetId}`);
+
+      // Step 2: Check if market is already in database (race condition check)
+      const existingMarket = await query(
+        'SELECT id FROM markets WHERE id = $1 OR condition_id = $1',
+        [marketId]
+      );
+
+      if (existingMarket.rows.length > 0) {
+        console.log(`[Auto-Sync] Market ${marketId} already exists in database, subscribing...`);
+        // Market exists, just subscribe to it
+        await this.subscribeToMarkets([existingMarket.rows[0].id]);
+        this.syncingAssetIds.delete(assetId);
+        return;
+      }
+
+      // Step 3: Fetch full market details from REST API
+      console.log(`[Auto-Sync] Fetching market details for ${marketId}...`);
+      let pmMarket = await this.restClient.fetchMarket(marketId);
+      
+      if (!pmMarket) {
+        // Try alternative: fetch from Gamma API using condition_id
+        console.log(`[Auto-Sync] Trying Gamma API for market ${marketId}...`);
+        const tokens = await this.restClient.fetchMarketTokens(marketId);
+        if (tokens.length > 0) {
+          // We have tokens, create a minimal market object
+          pmMarket = {
+            conditionId: marketId,
+            questionId: marketId,
+            question: `Market ${marketId}`,
+            outcomes: tokens.map(t => ({
+              id: t.token_id,
+              tokenId: t.token_id,
+              outcome: t.outcome,
+            })),
+          };
+        } else {
+          console.warn(`[Auto-Sync] Could not fetch market details for ${marketId}`);
+          this.syncingAssetIds.delete(assetId);
+          return;
+        }
+      }
+
+      // Step 4: Sync the market to database
+      console.log(`[Auto-Sync] Syncing market ${marketId} to database...`);
+      if (this.marketSyncService) {
+        await this.marketSyncService.syncMarket(pmMarket);
+        
+        // Step 5: Get the database market ID and subscribe
+        const syncedMarket = await query(
+          'SELECT id FROM markets WHERE id = $1 OR condition_id = $1',
+          [marketId]
+        );
+
+        if (syncedMarket.rows.length > 0) {
+          const dbMarketId = syncedMarket.rows[0].id;
+          console.log(`[Auto-Sync] Successfully synced market ${marketId} (DB ID: ${dbMarketId}), subscribing...`);
+          await this.subscribeToMarkets([dbMarketId]);
+          console.log(`[Auto-Sync] Successfully auto-synced and subscribed to market ${marketId}`);
+        } else {
+          console.warn(`[Auto-Sync] Market ${marketId} was synced but not found in database`);
+        }
+      }
+    } catch (error) {
+      console.error(`[Auto-Sync] Error during auto-sync for asset_id ${assetId}:`, error);
+    } finally {
+      this.syncingAssetIds.delete(assetId);
     }
   }
 

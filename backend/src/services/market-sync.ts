@@ -300,7 +300,7 @@ export class MarketSyncService {
    * Sync a single market from Polymarket format to our database
    * Only updates if market has actually changed (smart sync)
    */
-  private async syncMarket(pmMarket: PolymarketMarket): Promise<void> {
+  async syncMarket(pmMarket: PolymarketMarket): Promise<void> {
     // Polymarket uses conditionId or questionId as the primary identifier
     // Use conditionId first, then questionId, then id, then tokenId as fallback
     const marketId = pmMarket.conditionId || pmMarket.questionId || pmMarket.id || pmMarket.tokenId;

@@ -93,6 +93,9 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // Initialize sync service
 const marketSync = new MarketSyncService(restClient, marketIngestion);
 
+// Enable auto-sync for unsynced markets
+marketIngestion.setMarketSyncService(marketSync);
+
 // Initialize periodic sync service
 // Default to 5 minutes, configurable via SYNC_INTERVAL_MINUTES env var
 const syncIntervalMinutes = parseInt(process.env.SYNC_INTERVAL_MINUTES || '5', 10);

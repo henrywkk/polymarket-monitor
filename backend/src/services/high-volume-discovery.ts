@@ -32,10 +32,12 @@ export class HighVolumeDiscoveryService {
 
     console.log(`[High-Volume Discovery] Starting periodic discovery (interval: ${intervalMinutes} minutes)`);
     
-    // Run initial discovery immediately
-    this.discoverHighVolumeMarkets().catch(err => {
-      console.error('[High-Volume Discovery] Error in initial discovery:', err);
-    });
+    // Run initial discovery after a short delay (to let server fully start and API connections stabilize)
+    setTimeout(() => {
+      this.discoverHighVolumeMarkets().catch(err => {
+        console.error('[High-Volume Discovery] Error in initial discovery:', err);
+      });
+    }, 10000); // Wait 10 seconds after server start
 
     // Then schedule periodic discovery
     this.discoveryInterval = setInterval(() => {

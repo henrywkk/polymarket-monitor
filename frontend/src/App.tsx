@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AlertNotification } from './components/AlertNotification';
 
 const MarketList = lazy(() =>
   import('./components/MarketList').then((module) => ({
@@ -23,6 +24,9 @@ function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-[#0b0f1a] text-slate-200 antialiased">
+        {/* Alert Notifications - Real-time alerts via WebSocket */}
+        <AlertNotification position="top-right" maxVisible={5} autoDismiss={10} />
+        
         <main>
           <Suspense
             fallback={

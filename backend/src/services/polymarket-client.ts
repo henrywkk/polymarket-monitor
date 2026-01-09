@@ -19,6 +19,13 @@ export interface PolymarketTradeEvent {
   side?: 'buy' | 'sell'; // If available
 }
 
+export interface PolymarketOrderbookEvent {
+  assetId: string;
+  bids: Array<{ price: number; size: number }>;
+  asks: Array<{ price: number; size: number }>;
+  timestamp: number;
+}
+
 export interface PolymarketSubscription {
   type: 'subscribe' | 'unsubscribe' | 'MARKET' | 'USER';
   assets_ids?: string[];
@@ -38,6 +45,7 @@ export class PolymarketWebSocketClient {
   private subscribedAssetIds = new Set<string>();
   private messageHandlers: Map<string, (data: PolymarketPriceEvent) => void> = new Map();
   private tradeHandlers: Map<string, (data: PolymarketTradeEvent) => void> = new Map();
+  private orderbookHandlers: Map<string, (data: PolymarketOrderbookEvent) => void> = new Map();
   private pingInterval: NodeJS.Timeout | null = null;
   private heartbeatInterval = 5000;
 
@@ -193,7 +201,30 @@ export class PolymarketWebSocketClient {
       }
     }
 
-    // 2. Direct market messages or book updates
+    // 2. Orderbook updates (full book with bids and asks)
+    if (Array.isArray(msg.bids) && Array.isArray(msg.asks)) {
+      const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
+      if (assetId) {
+        // Parse full orderbook
+        const bids = this.parseOrderbookSide(msg.bids);
+        const asks = this.parseOrderbookSide(msg.asks);
+        
+        // Emit orderbook event
+        this.emitOrderbookEvent(assetId, {
+          bids,
+          asks,
+          timestamp: Date.now(),
+        });
+        
+        // Also emit price event for backward compatibility
+        if (bids.length > 0 && asks.length > 0) {
+          this.emitPriceEvent(assetId, bids[0].price, asks[0].price, 'order_book_changed');
+        }
+      }
+      return;
+    }
+
+    // 3. Direct market messages with best bid/ask
     const eventType = (msg.event_type || msg.type) as string;
     const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
 
@@ -205,15 +236,6 @@ export class PolymarketWebSocketClient {
     if (msg.best_bid !== undefined && msg.best_ask !== undefined) {
       bid = typeof msg.best_bid === 'string' ? parseFloat(msg.best_bid) : msg.best_bid;
       ask = typeof msg.best_ask === 'string' ? parseFloat(msg.best_ask) : msg.best_ask;
-    } else if (Array.isArray(msg.bids) && Array.isArray(msg.asks)) {
-      if (msg.bids.length > 0) {
-        const topBid = msg.bids[0];
-        bid = typeof topBid === 'object' ? parseFloat(String(topBid.price || 0)) : parseFloat(String(topBid));
-      }
-      if (msg.asks.length > 0) {
-        const topAsk = msg.asks[0];
-        ask = typeof topAsk === 'object' ? parseFloat(String(topAsk.price || 0)) : parseFloat(String(topAsk));
-      }
     } else if (msg.price !== undefined) {
       const price = typeof msg.price === 'string' ? parseFloat(msg.price) : msg.price;
       bid = price;
@@ -338,6 +360,40 @@ export class PolymarketWebSocketClient {
     this.tradeHandlers.delete(assetId);
   }
 
+  onOrderbook(assetId: string, handler: (data: PolymarketOrderbookEvent) => void): void {
+    this.orderbookHandlers.set(assetId, handler);
+  }
+
+  offOrderbook(assetId: string): void {
+    this.orderbookHandlers.delete(assetId);
+  }
+
+  /**
+   * Parse orderbook side (bids or asks) into array of {price, size}
+   */
+  private parseOrderbookSide(side: any[]): Array<{ price: number; size: number }> {
+    return side.map(item => {
+      if (typeof item === 'object' && item !== null) {
+        return {
+          price: parseFloat(String(item.price || item[0] || 0)),
+          size: parseFloat(String(item.size || item.amount || item.quantity || item[1] || 0)),
+        };
+      } else if (Array.isArray(item)) {
+        // Array format: [price, size]
+        return {
+          price: parseFloat(String(item[0] || 0)),
+          size: parseFloat(String(item[1] || 0)),
+        };
+      } else {
+        // Single value (price only, size assumed to be 1)
+        return {
+          price: parseFloat(String(item || 0)),
+          size: 1,
+        };
+      }
+    }).filter(item => item.price > 0);
+  }
+
   private emitTradeEvent(assetId: string, trade: { price: number; size: number; timestamp: number; side?: 'buy' | 'sell' }): void {
     const event: PolymarketTradeEvent = {
       assetId,
@@ -351,6 +407,21 @@ export class PolymarketWebSocketClient {
     if (handler) handler(event);
     
     const globalHandler = this.tradeHandlers.get('*');
+    if (globalHandler) globalHandler(event);
+  }
+
+  private emitOrderbookEvent(assetId: string, orderbook: { bids: Array<{ price: number; size: number }>; asks: Array<{ price: number; size: number }>; timestamp: number }): void {
+    const event: PolymarketOrderbookEvent = {
+      assetId,
+      bids: orderbook.bids,
+      asks: orderbook.asks,
+      timestamp: orderbook.timestamp,
+    };
+    
+    const handler = this.orderbookHandlers.get(assetId);
+    if (handler) handler(event);
+    
+    const globalHandler = this.orderbookHandlers.get('*');
     if (globalHandler) globalHandler(event);
   }
 

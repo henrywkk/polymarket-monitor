@@ -1,5 +1,5 @@
 import { query } from '../config/database';
-import { PolymarketWebSocketClient, PolymarketPriceEvent, PolymarketTradeEvent } from './polymarket-client';
+import { PolymarketWebSocketClient, PolymarketPriceEvent, PolymarketTradeEvent, PolymarketOrderbookEvent } from './polymarket-client';
 import { calculateImpliedProbability, calculateMidPrice, isValidPrice } from '../utils/probability';
 import { Market, Outcome } from '../models/Market';
 import { redis } from '../config/redis';
@@ -30,6 +30,11 @@ export class MarketIngestionService {
     // Listen to all trade events
     this.wsClient.onTrade('*', (event: PolymarketTradeEvent) => {
       this.handleTradeEvent(event);
+    });
+    
+    // Listen to all orderbook events
+    this.wsClient.onOrderbook('*', (event: PolymarketOrderbookEvent) => {
+      this.handleOrderbookEvent(event);
     });
   }
 

@@ -162,31 +162,46 @@ redis-cli -h {REDIS_HOST} -p {REDIS_PORT} -a {REDIS_PASSWORD}
 
 #### Check Trade Data
 
+**Important:** "Asset" refers to an **outcome's `token_id`**, not the market. Each outcome in a market has its own unique `token_id` (also called `assetId` in Polymarket's WebSocket API).
+
+**To find the token_id for an outcome:**
+1. Query the database: `SELECT token_id, outcome, market_id FROM outcomes WHERE market_id = '{marketId}'`
+2. Or use the API: `GET /api/markets/{marketId}` and look at the `outcomes[].tokenId` field
+
 ```bash
-# List all trade keys
+# List all trade keys (each key is trades:{token_id})
 KEYS trades:*
 
-# Get trade count for a specific asset
+# Get trade count for a specific outcome (by token_id)
+# Example: token_id 284710 corresponds to a specific outcome (e.g., "Yes" or "<0.5%")
 ZCARD trades:284710
 
-# Get latest 10 trades
+# Get latest 10 trades for an outcome
 ZREVRANGE trades:284710 0 9
 
-# Get trades from last hour
+# Get trades from last hour (using timestamps in milliseconds)
 ZRANGEBYSCORE trades:284710 1704783600000 1704787200000
+
+# Example: Get all trades for a market (requires knowing all outcome token_ids)
+# First, get all outcomes for market from database, then query each token_id
 ```
 
 #### Check Orderbook Data
 
+**Important:** Orderbook data is also stored per outcome (by `token_id`), not per market.
+
 ```bash
-# List all orderbook keys
+# List all orderbook keys (each key is orderbook:{token_id})
 KEYS orderbook:*
 
-# Get orderbook metrics count
+# Get orderbook metrics count for a specific outcome (by token_id)
 ZCARD orderbook:284710
 
-# Get latest orderbook metrics
+# Get latest orderbook metrics for an outcome
 ZREVRANGE orderbook:284710 0 0
+
+# Get latest 10 orderbook snapshots
+ZREVRANGE orderbook:284710 0 9
 
 # Get orderbook metrics from last hour
 ZRANGEBYSCORE orderbook:284710 1704783600000 1704787200000

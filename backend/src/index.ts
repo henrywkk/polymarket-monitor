@@ -8,7 +8,7 @@ import healthRoutes, { setWebSocketClient } from './routes/health';
 import marketsRoutes from './routes/markets';
 import categoriesRoutes from './routes/categories';
 import statsRoutes from './routes/stats';
-import syncRoutes, { setSyncService } from './routes/sync';
+import syncRoutes, { setSyncService, setRestClient } from './routes/sync';
 import tradesRoutes from './routes/trades';
 import { PolymarketWebSocketClient } from './services/polymarket-client';
 import { MarketIngestionService } from './services/market-ingestion';
@@ -106,6 +106,7 @@ setWebSocketClient(wsClient);
 
 // Set sync service reference for sync endpoint
 setSyncService(marketSync);
+setRestClient(restClient);
 
 // Start server
 const startServer = async () => {

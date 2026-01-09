@@ -283,10 +283,46 @@ export class PolymarketRestClient {
   }
 
   /**
-   * Fetch a single market by ID
+   * Fetch a single market by ID or slug
    */
   async fetchMarket(marketId: string): Promise<PolymarketMarket | null> {
     try {
+      // Try Gamma API first (supports both ID and slug)
+      const gammaEndpoints = [
+        `/events/${marketId}`, // Try as ID first
+        `/events?slug=${marketId}`, // Try as slug
+      ];
+
+      for (const endpoint of gammaEndpoints) {
+        try {
+          const response = await axios.get<PolymarketMarketRaw | PolymarketMarketsResponse>(
+            `${POLYMARKET_GAMMA_API}${endpoint}`,
+            { timeout: 10000 }
+          );
+          
+          // Handle different response formats
+          let rawMarket: PolymarketMarketRaw;
+          if (Array.isArray(response.data)) {
+            rawMarket = response.data[0];
+          } else if ((response.data as any).data && Array.isArray((response.data as any).data)) {
+            rawMarket = (response.data as any).data[0];
+          } else {
+            rawMarket = response.data as PolymarketMarketRaw;
+          }
+          
+          if (rawMarket) {
+            return normalizeMarket(rawMarket);
+          }
+        } catch (error) {
+          if (axios.isAxiosError(error) && error.response?.status === 404) {
+            continue; // Try next endpoint
+          }
+          // For other errors, continue to next endpoint
+          continue;
+        }
+      }
+
+      // Fallback to other API endpoints
       const endpoints = [
         `/markets/${marketId}`,
         `/v2/markets/${marketId}`,

@@ -1008,8 +1008,9 @@ export class MarketIngestionService {
       console.log(`[Auto-Sync] Found market ID ${marketId} for asset_id ${assetId}`);
 
       // Step 2: Check if market is already in database (race condition check)
+      // Note: The market ID in our database is typically the conditionId or questionId from Polymarket
       const existingMarket = await query(
-        'SELECT id FROM markets WHERE id = $1 OR condition_id = $1',
+        'SELECT id FROM markets WHERE id = $1',
         [marketId]
       );
 
@@ -1054,8 +1055,9 @@ export class MarketIngestionService {
         await this.marketSyncService.syncMarket(pmMarket);
         
         // Step 5: Get the database market ID and subscribe
+        // Note: The market ID in our database is typically the conditionId or questionId from Polymarket
         const syncedMarket = await query(
-          'SELECT id FROM markets WHERE id = $1 OR condition_id = $1',
+          'SELECT id FROM markets WHERE id = $1',
           [marketId]
         );
 

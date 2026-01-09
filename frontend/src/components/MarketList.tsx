@@ -95,18 +95,18 @@ const MarketRow = ({
         transition={{ duration: 0.3 }}
         className="group hover:bg-slate-800/20 transition-all border-b border-slate-800/40"
       >
-        <td className="px-8 py-4">
+        <td className="pl-6 pr-8 py-4">
           {/* Empty - aligns with empty cell in row 2 */}
         </td>
         <td className="px-8 py-4" colSpan={8}>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Link 
               to={`/markets/${market.id}`}
-              className="text-white font-bold text-base leading-tight group-hover:text-blue-400 transition-colors flex-1 min-w-0"
+              className="text-white font-bold text-base leading-tight group-hover:text-blue-400 transition-colors"
             >
               {market.question}
             </Link>
-            <span className="text-slate-500 text-xs font-mono uppercase tracking-tighter whitespace-nowrap flex-shrink-0">{market.id}</span>
+            <span className="text-slate-500 text-xs font-mono uppercase tracking-tighter">{market.id}</span>
           </div>
         </td>
       </motion.tr>
@@ -122,7 +122,7 @@ const MarketRow = ({
         transition={{ duration: 0.3 }}
         className="group hover:bg-slate-800/10 transition-all border-b border-slate-800/40"
       >
-        <td className="px-8 py-4">
+        <td className="pl-6 pr-8 py-4">
           {/* Empty - aligns with empty cell in row 1 */}
         </td>
         <td className="px-8 py-4 text-right">
@@ -200,7 +200,7 @@ export const MarketList = () => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [sortBy, setSortBy] = useState('liquidity'); // Use state for sortBy
+  const [sortBy, setSortBy] = useState('volume24h'); // Default sort by 24H Vol
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'connecting' | 'offline'>('connecting');
 
   const { data, isLoading, error } = useMarkets({
@@ -404,6 +404,15 @@ export const MarketList = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
+      {/* Loading indicator at top when switching categories/sorting */}
+      {isLoading && data && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-slate-900/90 backdrop-blur-sm border-b border-slate-800">
+          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-center gap-3">
+            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-slate-400 text-sm font-medium">Loading markets...</p>
+          </div>
+        </div>
+      )}
       {/* Top Bar - Title, Description, and Sort Filters */}
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 mb-8">
         <div>
@@ -532,14 +541,14 @@ export const MarketList = () => {
               </div>
             )}
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left border-collapse -ml-6">
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-900/30">
-                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest"></th>
+                    <th className="pl-6 pr-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest"></th>
                     <th colSpan={8} className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
                   </tr>
                   <tr className="border-b border-slate-800 bg-slate-900/30">
-                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest"></th>
+                    <th className="pl-6 pr-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest"></th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Probability</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Vol (24h)</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Total Vol</th>

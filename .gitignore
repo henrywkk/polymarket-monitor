@@ -48,3 +48,5 @@ Thumbs.db
 .temp/
 *.tmp
 
+# Temporary working files
+tmp/

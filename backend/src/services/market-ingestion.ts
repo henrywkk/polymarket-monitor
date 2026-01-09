@@ -10,6 +10,7 @@ export class MarketIngestionService {
   private wsServer?: WebSocketServer;
   private activeMarkets = new Map<string, Set<string>>(); // marketId -> Set of outcomeIds
   private lastPersistedPrices = new Map<string, { price: number; timestamp: number }>(); // outcomeId -> { price, timestamp }
+  private warnedAssetIds = new Set<string>(); // Track asset_ids we've warned about to reduce log noise
   private PERSIST_INTERVAL_MS = 60000; // Persist at most once per minute per outcome
   private PRICE_CHANGE_THRESHOLD = 0.01; // OR if price changes by more than 1%
 
@@ -197,6 +198,8 @@ export class MarketIngestionService {
 
       // Get outcome record to get the outcome ID
       // Note: outcomeId here is the asset_id (token_id) from CLOB WebSocket
+      // Note: marketId in the event is actually also an assetId (from WebSocket client),
+      //       so we only lookup by token_id
       let outcome: { id: string; market_id: string; token_id: string };
       const outcomeResult = await query(
         'SELECT id, market_id, token_id FROM outcomes WHERE token_id = $1',
@@ -204,21 +207,20 @@ export class MarketIngestionService {
       );
 
       if (outcomeResult.rows.length === 0) {
-        // Try alternative lookup by market_id if asset_id lookup fails
-        const altResult = await query(
-          'SELECT id, market_id, token_id FROM outcomes WHERE market_id = $1 AND token_id = $2',
-          [marketId, outcomeId]
-        );
-        if (altResult.rows.length === 0) {
-          console.warn(`Outcome not found for asset_id ${outcomeId} (market: ${marketId})`);
-          return;
+        // Outcome not in database - likely from a market we haven't synced yet
+        // Only warn once per asset_id to reduce log noise
+        if (!this.warnedAssetIds.has(outcomeId)) {
+          console.warn(`Outcome not found for asset_id ${outcomeId} (likely from unsynced market)`);
+          this.warnedAssetIds.add(outcomeId);
+          // Clear warning after 1 hour to allow re-warning if issue persists
+          setTimeout(() => this.warnedAssetIds.delete(outcomeId), 3600000);
         }
-        outcome = altResult.rows[0];
-      } else {
-        outcome = outcomeResult.rows[0];
-        // Update marketId from database if it differs
-        marketId = outcome.market_id;
+        return;
       }
+      
+      outcome = outcomeResult.rows[0];
+      // Update marketId from database (the event's marketId is actually an assetId)
+      marketId = outcome.market_id;
 
       // Store Last Traded Price in Redis for fast frontend access
       // Key format: market:{marketId}:price:{tokenId}

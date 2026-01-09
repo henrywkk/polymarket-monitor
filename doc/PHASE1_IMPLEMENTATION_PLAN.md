@@ -581,7 +581,7 @@ Once Phase 1 is complete, we'll have:
 
 Phase 2 will use this data to:
 - Calculate Z-scores for volume acceleration
-- Detect price velocity (15% in <1min)
+- Detect price velocity (15 percentage points / 0.15 absolute change in <1min)
 - Detect fat fingers (30% deviation)
 - Monitor liquidity vacuums (spread >10 cents)
 - Detect whale trades (>$10k)

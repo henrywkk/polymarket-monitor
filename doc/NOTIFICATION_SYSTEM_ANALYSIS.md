@@ -68,7 +68,7 @@ We have a **solid foundation** with real-time data ingestion, but we're missing 
 ### Required Components (From Document)
 
 #### 1. **Alert Catalog** (5 Alert Types)
-- ❌ **A. Insider Move Alert**: Price >15% in <1min + volume acceleration (3σ)
+- ❌ **A. Insider Move Alert**: Price >15 percentage points (0.15 absolute change) in <1min + volume acceleration (3σ)
 - ❌ **B. Fat Finger/Flash Crash**: Price deviation >30% + reversion within 2 trades
 - ❌ **C. Liquidity Vacuum**: Spread >10 cents (orderbook collapse)
 - ⚠️ **D. New Narrative Alert**: New market detection (logic exists, no alerting)
@@ -135,7 +135,7 @@ We have a **solid foundation** with real-time data ingestion, but we're missing 
 
 **Required:**
 - Z-score calculator (3.5σ threshold)
-- Price velocity tracker (15% in <1min)
+- Price velocity tracker (15 percentage points / 0.15 absolute change in <1min)
 - Volume acceleration detector (3σ above hourly average)
 - Fat finger detector (30% deviation + reversion)
 
@@ -221,7 +221,8 @@ We have a **solid foundation** with real-time data ingestion, but we're missing 
 
 2. ✅ **Price Velocity Tracker** (1 day)
    - Track price changes over 1-minute windows
-   - Flag when price moves >15% in <1min
+   - Flag when price moves >15 percentage points (0.15 absolute change) in <1min
+   - Uses absolute change instead of percentage to avoid false positives from small prices
 
 3. ✅ **Volume Acceleration Detector** (2 days)
    - Calculate hourly volume average

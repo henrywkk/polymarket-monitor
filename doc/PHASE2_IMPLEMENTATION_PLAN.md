@@ -36,13 +36,14 @@ Phase 2 builds the intelligence layer that analyzes the data collected in Phase 
 ---
 
 ### Task 2: Price Velocity Tracker (1 day)
-**Purpose:** Detect rapid price movements (>15% in <1min)
+**Purpose:** Detect rapid price movements (>15 percentage points in <1min)
 
 **Requirements:**
 - Track price changes over 1-minute windows
-- Calculate percentage change: `(newPrice - oldPrice) / oldPrice * 100`
-- Flag when price moves >15% in <1min
+- Calculate absolute change: `|newPrice - oldPrice|` (for prices in 0-1 range)
+- Flag when price moves >0.15 (15 percentage points) in <1min
 - Store price history in Redis (1-minute granularity)
+- **Note:** Uses absolute change instead of percentage change to avoid false positives from small prices (e.g., 0.1% → 0.2% = 100% but only 0.1 absolute change)
 
 **Implementation:**
 - Add price velocity tracking to `anomaly-detector.ts`
@@ -143,9 +144,10 @@ Phase 2 builds the intelligence layer that analyzes the data collected in Phase 
 ## Alert Types Summary
 
 ### A. Insider Move Alert
-- **Trigger:** Price >15% in <1min + volume acceleration (3σ)
+- **Trigger:** Price >15 percentage points (0.15 absolute change) in <1min + volume acceleration (3σ)
 - **Components:** Price Velocity Tracker + Volume Acceleration Detector
 - **Priority:** High
+- **Note:** Uses absolute change (not percentage) for prices in 0-1 range to avoid false positives
 
 ### B. Fat Finger/Flash Crash
 - **Trigger:** Price deviation >30% + reversion within 2 trades

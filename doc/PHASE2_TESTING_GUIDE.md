@@ -218,9 +218,10 @@ GET fat_finger:85299:outcome-123
 #### Test 3: Price Velocity Detection
 
 **Expected Behavior:**
-- When price moves >15% in <1min, price velocity alert should be generated
+- When price moves >15 percentage points (0.15 absolute change) in <1min, price velocity alert should be generated
 - This is a component of insider move detection
 - Alert type: `insider_move` (when combined with volume acceleration)
+- **Note:** Uses absolute change (not percentage) for prices in 0-1 range to avoid false positives from small prices
 
 **How to Verify:**
 1. Monitor logs for price velocity alerts
@@ -317,7 +318,9 @@ This will log:
 
 3. **Velocity is calculated:**
    - Check logs for price velocity alerts
-   - Verify 15% threshold is applied correctly
+   - Verify 15 percentage points (0.15 absolute change) threshold is applied correctly
+   - **Formula:** `absoluteChange = |currentPrice - lastPrice|` (for prices in 0-1 range)
+   - **Threshold:** 0.15 (15 percentage points) instead of 15% to avoid false positives from small prices
 
 ### ✅ Volume Acceleration Detector
 

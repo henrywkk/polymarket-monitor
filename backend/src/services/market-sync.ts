@@ -577,18 +577,19 @@ export class MarketSyncService {
             timestamp: Date.now()
           });
         }
+      }
 
-        // Detect new outcomes after syncing
-        const currentOutcomes = outcomesWithTokens.map(o => ({
-          id: o.id || o.tokenId || `${marketId}-${o.outcome}`,
-          outcome: o.outcome,
-        }));
-        const newOutcomeAlerts = await this.newMarketDetector.detectNewOutcomes(marketId, currentOutcomes);
-        for (const alert of newOutcomeAlerts) {
-          await this.ingestionService.anomalyDetector.storeAlert(alert);
-          console.log(`[New Outcome] Alert generated for: ${alert.data.newOutcome} in ${alert.data.marketTitle}`);
-        }
-      } else if (pmMarket.conditionId || pmMarket.questionId || pmMarket.tokenId) {
+      // Detect new outcomes after syncing all outcomes
+      const currentOutcomes = outcomesWithTokens.map(o => ({
+        id: o.id || o.tokenId || `${marketId}-${o.outcome}`,
+        outcome: o.outcome,
+      }));
+      const newOutcomeAlerts = await this.newMarketDetector.detectNewOutcomes(marketId, currentOutcomes);
+      for (const alert of newOutcomeAlerts) {
+        await this.ingestionService.anomalyDetector.storeAlert(alert);
+        console.log(`[New Outcome] Alert generated for: ${alert.data.newOutcome} in ${alert.data.marketTitle}`);
+      }
+    } else if (pmMarket.conditionId || pmMarket.questionId || pmMarket.tokenId) {
       // Binary market - create Yes/No outcomes
       // For binary markets, we need to fetch token_ids from CLOB API
       // For now, use conditionId as placeholder (will need to fetch actual token_ids)

@@ -534,15 +534,48 @@ router.get('/', async (req: Request, res: Response) => {
           }
         } else {
           // For discrete markets, find highest probability outcome
+          // IMPORTANT: We need to check ALL outcomes, including those that might have prices
+          // in Redis but not yet in the database, or vice versa
           if (outcomesWithPrices.length > 0) {
+            // First, try to refresh prices from Redis for all outcomes to ensure we have the latest
+            // This ensures we're comparing the most recent probabilities
+            const refreshedOutcomes = await Promise.all(
+              outcomesWithPrices.map(async (outcome) => {
+                // Try Redis first (most recent)
+                try {
+                  const redisKey = `market:${market.id}:price:${outcome.token_id}`;
+                  const cached = await redis.get(redisKey);
+                  if (cached) {
+                    const priceData = JSON.parse(cached);
+                    return {
+                      ...outcome,
+                      currentPrice: {
+                        bid_price: priceData.bid,
+                        ask_price: priceData.ask,
+                        mid_price: priceData.mid,
+                        implied_probability: priceData.probability,
+                      },
+                    };
+                  }
+                } catch (error) {
+                  // Ignore Redis errors
+                }
+                // Fallback to what we already have
+                return outcome;
+              })
+            );
+            
             // Filter outcomes that have prices (prefer these)
-            const outcomesWithPricesOnly = outcomesWithPrices.filter(o => o.outcome && o.currentPrice);
+            const outcomesWithPricesOnly = refreshedOutcomes.filter(o => o.outcome && o.currentPrice);
             
             if (outcomesWithPricesOnly.length > 0) {
               // Use outcomes with prices to find the highest probability
-              const highestProbOutcome = outcomesWithPricesOnly.reduce((max, o) => 
-                (o.currentPrice?.implied_probability || 0) > (max.currentPrice?.implied_probability || 0) ? o : max
+              // Sort by probability descending to ensure we get the true highest
+              const sortedByProbability = [...outcomesWithPricesOnly].sort((a, b) => 
+                (b.currentPrice?.implied_probability || 0) - (a.currentPrice?.implied_probability || 0)
               );
+              
+              const highestProbOutcome = sortedByProbability[0];
               
               if (highestProbOutcome.currentPrice?.implied_probability !== undefined) {
                 probabilityDisplay = {
@@ -556,7 +589,7 @@ router.get('/', async (req: Request, res: Response) => {
             } else {
               // No outcomes have prices yet, but we still want to show the outcome name
               // Use the first outcome with a name (even without price)
-              const firstOutcomeWithName = outcomesWithPrices.find(o => o.outcome);
+              const firstOutcomeWithName = refreshedOutcomes.find(o => o.outcome);
               if (firstOutcomeWithName) {
                 probabilityDisplay = {
                   type: 'highestProbability',

@@ -452,10 +452,50 @@ export class MarketIngestionService {
       const { cacheService } = await import('./cache-service');
       await cacheService.invalidateMarket(marketId);
 
-      // Update last_trade_at for the market
-      await query(
-        'UPDATE markets SET last_trade_at = NOW() WHERE id = $1',
+      // Update last_trade_at and recalculate activity_score for the market
+      // Activity score should reflect recent trading activity (price updates)
+      // Calculate based on: recent price update frequency and recency of last trade
+      const activityScoreResult = await query(
+        `SELECT 
+          COUNT(*) as recent_updates,
+          MAX(timestamp) as last_update
+        FROM price_history
+        WHERE market_id = $1
+          AND timestamp >= NOW() - INTERVAL '24 hours'`,
         [marketId]
+      );
+      
+      const recentUpdates = parseInt(activityScoreResult.rows[0]?.recent_updates || '0', 10);
+      const lastUpdate = activityScoreResult.rows[0]?.last_update;
+      
+      // Calculate activity score:
+      // - Base score from recent update count (0-50 points, capped at 100 updates = 50 points)
+      // - Recency bonus (0-50 points) based on how recent the last update was
+      let activityScore = Math.min(recentUpdates / 100 * 50, 50);
+      
+      if (lastUpdate) {
+        const hoursSinceUpdate = (Date.now() - new Date(lastUpdate).getTime()) / (1000 * 60 * 60);
+        if (hoursSinceUpdate < 0.5) {
+          activityScore += 50; // Updated in last 30 minutes
+        } else if (hoursSinceUpdate < 1) {
+          activityScore += 40; // Updated in last hour
+        } else if (hoursSinceUpdate < 6) {
+          activityScore += 25; // Updated in last 6 hours
+        } else if (hoursSinceUpdate < 24) {
+          activityScore += 10; // Updated in last 24 hours
+        }
+      }
+      
+      // Cap at 100
+      activityScore = Math.min(100, activityScore);
+      
+      await query(
+        `UPDATE markets 
+         SET last_trade_at = NOW(), 
+             activity_score = $2,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [marketId, activityScore]
       );
     } catch (error) {
       console.error('Error handling price event:', error);
@@ -522,6 +562,37 @@ export class MarketIngestionService {
       if (size >= 10000) {
         console.log(`[Whale Trade] Asset ${assetId} (Market: ${marketId}): $${size.toFixed(2)} at ${price}`);
       }
+      
+      // Update last_trade_at and activity_score when a trade occurs
+      // Trades are a strong indicator of activity
+      const activityScoreResult = await query(
+        `SELECT 
+          COUNT(*) as recent_updates,
+          MAX(timestamp) as last_update
+        FROM price_history
+        WHERE market_id = $1
+          AND timestamp >= NOW() - INTERVAL '24 hours'`,
+        [marketId]
+      );
+      
+      const recentUpdates = parseInt(activityScoreResult.rows[0]?.recent_updates || '0', 10);
+      
+      // Calculate activity score with trade bonus
+      // Trades are very recent activity, so give high recency bonus
+      let activityScore = Math.min(recentUpdates / 100 * 50, 50);
+      activityScore += 50; // Trade just happened - strong activity signal
+      
+      // Cap at 100
+      activityScore = Math.min(100, activityScore);
+      
+      await query(
+        `UPDATE markets 
+         SET last_trade_at = NOW(), 
+             activity_score = $2,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [marketId, activityScore]
+      );
     } catch (error) {
       console.error('Error handling trade event:', error);
     }

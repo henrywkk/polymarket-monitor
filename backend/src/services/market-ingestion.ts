@@ -641,23 +641,33 @@ export class MarketIngestionService {
     const spreadPercent = midPrice > 0 ? (spread / midPrice) * 100 : 0;
     
     // Calculate depth within 2% of mid-price
-    const twoPercentRange = midPrice * 0.02;
+    // Use the larger of: 2% of mid-price OR the spread itself
+    // This ensures we capture depth even when spread is wider than 2%
+    const twoPercentRange = Math.max(midPrice * 0.02, spread);
     const minPrice = midPrice - twoPercentRange;
     const maxPrice = midPrice + twoPercentRange;
     
     let depth2Percent = 0;
     
     // Sum bid depth within range (use sorted bids)
+    // Bids should be at or below mid-price, within the range
     for (const bid of sortedBids) {
       if (bid.price >= minPrice && bid.price <= midPrice) {
         depth2Percent += bid.size;
+      } else if (bid.price < minPrice) {
+        // Stop if we've gone too far below the range
+        break;
       }
     }
     
     // Sum ask depth within range (use sorted asks)
+    // Asks should be at or above mid-price, within the range
     for (const ask of sortedAsks) {
       if (ask.price >= midPrice && ask.price <= maxPrice) {
         depth2Percent += ask.size;
+      } else if (ask.price > maxPrice) {
+        // Stop if we've gone too far above the range
+        break;
       }
     }
     

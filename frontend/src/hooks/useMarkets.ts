@@ -22,6 +22,7 @@ export const useMarkets = (params?: {
     },
     staleTime: 30000, // 30 seconds
     retry: 2,
+    placeholderData: (previousData) => previousData, // Keep previous data while loading new data
   });
 };
 

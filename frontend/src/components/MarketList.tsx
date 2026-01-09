@@ -387,7 +387,11 @@ export const MarketList = () => {
     return `Est. ends in ${days} days`;
   };
 
-  if (isLoading && !data) {
+  // Only show full-page loading on initial load (no data at all)
+  // For subsequent loads (category changes, etc.), show table with loading overlay
+  const isInitialLoad = isLoading && !data;
+  
+  if (isInitialLoad) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -400,20 +404,48 @@ export const MarketList = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
-      {/* Top Bar - Title and Description */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-4xl font-black tracking-tight text-white">
-            PolyMonitor<span className="text-blue-500">PRO</span>
-          </h1>
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border bg-purple-500/10 text-purple-400 border-purple-500/20">
-            BETA
+      {/* Top Bar - Title, Description, and Sort Filters */}
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 mb-8">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-4xl font-black tracking-tight text-white">
+              PolyMonitor<span className="text-blue-500">PRO</span>
+            </h1>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border bg-purple-500/10 text-purple-400 border-purple-500/20">
+              BETA
+            </div>
           </div>
+          <p className="text-slate-400 text-lg">Institutional-grade prediction market monitoring.</p>
         </div>
-        <p className="text-slate-400 text-lg">Institutional-grade prediction market monitoring.</p>
+
+        {/* Sort Filters - Top Right Corner */}
+        <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex flex-shrink-0">
+          {[
+            { id: 'activity', label: 'Activity', icon: Activity },
+            { id: 'liquidity', label: 'Liquidity', icon: Server },
+            { id: 'volume24h', label: '24h Vol', icon: TrendingUp },
+            { id: 'volume', label: 'Total Vol', icon: TrendingUp },
+          ].map((option) => (
+            <button
+              key={option.id}
+              onClick={() => {
+                setSortBy(option.id);
+                setPage(1);
+              }}
+              className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
+                sortBy === option.id 
+                  ? 'bg-slate-700 text-white shadow-lg' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <option.icon className="w-4 h-4" />
+              {option.label.toUpperCase()}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Category Filter - Moved here, above stats */}
+      {/* Category Filter - Above stats */}
       <div className="mb-6">
         <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex flex-wrap gap-1">
           {/* Fixed order categories: All, Crypto, Politics, Sports */}
@@ -457,34 +489,6 @@ export const MarketList = () => {
         </div>
       </div>
 
-      {/* Sort Filters - Moved to top right */}
-      <div className="flex justify-end mb-6">
-        <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex">
-          {[
-            { id: 'activity', label: 'Activity', icon: Activity },
-            { id: 'liquidity', label: 'Liquidity', icon: Server },
-            { id: 'volume24h', label: '24h Vol', icon: TrendingUp },
-            { id: 'volume', label: 'Total Vol', icon: TrendingUp },
-          ].map((option) => (
-            <button
-              key={option.id}
-              onClick={() => {
-                setSortBy(option.id);
-                setPage(1);
-              }}
-              className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
-                sortBy === option.id 
-                  ? 'bg-slate-700 text-white shadow-lg' 
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <option.icon className="w-4 h-4" />
-              {option.label.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <StatCard label="Live Markets" value={stats.total} color="blue" />
@@ -515,15 +519,27 @@ export const MarketList = () => {
       )}
 
       {/* Main Content Table */}
-      {data && (
+      {(data || (isLoading && data)) && (
         <>
-          <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl overflow-hidden">
+          <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl overflow-hidden relative">
+            {/* Loading overlay for subsequent loads */}
+            {isLoading && data && (
+              <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-slate-400 text-sm font-medium">Loading...</p>
+                </div>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-900/30">
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest"></th>
-                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
+                    <th colSpan={8} className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">Market</th>
+                  </tr>
+                  <tr className="border-b border-slate-800 bg-slate-900/30">
+                    <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest"></th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Probability</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Vol (24h)</th>
                     <th className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Total Vol</th>

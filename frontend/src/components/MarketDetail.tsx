@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Clock, TrendingUp, ExternalLink, BarChart3, PieChart, Activity } from 'lucide-react';
+import { ArrowLeft, Clock, TrendingUp, ExternalLink, BarChart3, PieChart, Activity, Copy, Check } from 'lucide-react';
 import { useMarketDetail } from '../hooks/useMarketDetail';
 import { useRealtimePrice } from '../hooks/useRealtimePrice';
 import { useRealtimeTrades } from '../hooks/useRealtimeTrades';
@@ -32,6 +32,8 @@ const OutcomeRow = ({
 }) => {
   const priceUpdate = useRealtimePrice(marketId, outcome.id);
   const [pulse, setPulse] = useState(false);
+  const [showOutcomeId, setShowOutcomeId] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (priceUpdate) {
@@ -66,9 +68,41 @@ const OutcomeRow = ({
                         Primary
                       </span>
                     )}
-                    <span className="text-[10px] text-slate-500 font-mono px-2 py-0.5 rounded bg-slate-800/50 border border-slate-700/50" title="Outcome ID for alert verification">
-                      ID: {outcome.id.slice(0, 8)}...
-                    </span>
+                    <div className="relative">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-slate-500 font-mono px-2 py-0.5 rounded bg-slate-800/50 border border-slate-700/50">
+                          ID: {outcome.id.slice(0, 8)}...
+                        </span>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(outcome.id);
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 2000);
+                            } catch (err) {
+                              console.error('Failed to copy:', err);
+                            }
+                          }}
+                          onMouseEnter={() => setShowOutcomeId(true)}
+                          onMouseLeave={() => setShowOutcomeId(false)}
+                          className="text-slate-500 hover:text-blue-400 transition-colors p-1"
+                          title="Copy full outcome ID"
+                        >
+                          {copied ? (
+                            <Check className="w-3 h-3" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+                      {/* Floating div showing full outcome ID */}
+                      {showOutcomeId && (
+                        <div className="absolute left-0 top-full mt-1 z-50 bg-slate-900 border border-slate-700 rounded-lg p-2 shadow-xl max-w-md">
+                          <div className="text-xs text-slate-400 mb-1">Full Outcome ID:</div>
+                          <div className="text-xs font-mono text-white break-all">{outcome.id}</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
             <div className="flex items-center gap-4 mt-1">
               <span className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1">

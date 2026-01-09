@@ -114,10 +114,8 @@ export class AnomalyDetector {
         return null;
       }
 
-      // Skip velocity check if lastPrice is 0 or very small (< 0.01)
-      // This prevents false positives from initial price data or data errors
-      // Also skip if currentPrice is 0 or invalid
-      if (lastPrice <= 0.01 || currentPrice <= 0.01 || !isFinite(lastPrice) || !isFinite(currentPrice)) {
+      // Skip velocity check if prices are invalid
+      if (!isFinite(lastPrice) || !isFinite(currentPrice) || lastPrice < 0 || currentPrice < 0 || lastPrice > 1 || currentPrice > 1) {
         // Update stored price but don't check velocity
         await redis.setex(lastPriceKey, 120, JSON.stringify({
           price: currentPrice,
@@ -126,22 +124,16 @@ export class AnomalyDetector {
         return null;
       }
 
-      // Calculate percentage change
-      const percentageChange = calculatePercentageChange(lastPrice, currentPrice);
+      // For prices in 0-1 range (orderbook prices), use absolute change instead of percentage
+      // Percentage change is misleading for small prices (e.g., 0.001 -> 0.002 = 100% but only 0.001 absolute change)
+      // Use absolute change threshold: 0.15 (15 percentage points) for prices in 0-1 range
+      const absoluteChange = Math.abs(currentPrice - lastPrice);
+      const ABSOLUTE_CHANGE_THRESHOLD = 0.15; // 15 percentage points (equivalent to 15% for prices in 0-1 range)
       
-      // Additional validation: Skip if percentage change is unreasonably high (>1000%)
-      // This catches cases where initial data was incorrect
-      if (Math.abs(percentageChange) > 1000) {
-        console.warn(`[Price Velocity] Skipping unreasonably high percentage change: ${percentageChange.toFixed(2)}% (lastPrice: ${lastPrice}, currentPrice: ${currentPrice})`);
-        // Update stored price but don't generate alert
-        await redis.setex(lastPriceKey, 120, JSON.stringify({
-          price: currentPrice,
-          timestamp: Date.now(),
-        }));
-        return null;
-      }
+      // Also calculate percentage change for logging/debugging
+      const percentageChange = calculatePercentageChange(lastPrice, currentPrice);
 
-      if (Math.abs(percentageChange) > this.PRICE_VELOCITY_THRESHOLD) {
+      if (absoluteChange > ABSOLUTE_CHANGE_THRESHOLD) {
         // Price moved >15% in <1min - potential insider move
         // But we need to also check volume acceleration (done in detectInsiderMove)
         return {
@@ -150,10 +142,11 @@ export class AnomalyDetector {
           outcomeId,
           tokenId,
           severity: 'high',
-          message: `Price moved ${percentageChange.toFixed(2)}% in ${(timeDiff / 1000).toFixed(1)}s`,
+          message: `Price moved ${(absoluteChange * 100).toFixed(2)}pp (${percentageChange.toFixed(2)}%) in ${(timeDiff / 1000).toFixed(1)}s`,
           data: {
             lastPrice,
             currentPrice,
+            absoluteChange,
             percentageChange,
             timeDiff,
           },
@@ -300,8 +293,9 @@ export class AnomalyDetector {
       outcomeId,
       tokenId,
       severity: 'critical',
-      message: `INSIDER MOVE: Price ${priceVelocityAlert.data.percentageChange.toFixed(2)}% + Volume ${volumeAccelerationAlert.data.zScore.toFixed(2)}σ spike`,
+      message: `INSIDER MOVE: Price ${(priceVelocityAlert.data.absoluteChange * 100).toFixed(2)}pp (${priceVelocityAlert.data.percentageChange.toFixed(2)}%) + Volume ${volumeAccelerationAlert.data.zScore.toFixed(2)}σ spike`,
       data: {
+        absoluteChange: priceVelocityAlert.data.absoluteChange,
         priceChange: priceVelocityAlert.data.percentageChange,
         volumeZScore: volumeAccelerationAlert.data.zScore,
         currentPrice,

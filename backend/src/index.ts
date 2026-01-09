@@ -80,13 +80,17 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
     // Initialize Polymarket WebSocket client
     // Use the official CLOB WebSocket URL: wss://ws-subscriptions-clob.polymarket.com/ws/
     // Reference: https://docs.polymarket.com/developers/CLOB/websocket/market-channel
+    // Initialize Polymarket REST client first (needed by both ingestion and sync services)
+    const restClient = new PolymarketRestClient();
+    
+    // Initialize Polymarket WebSocket client
+    // Use the official CLOB WebSocket URL: wss://ws-subscriptions-clob.polymarket.com/ws/
+    // Reference: https://docs.polymarket.com/developers/CLOB/websocket/market-channel
     const wsUrl = process.env.POLYMARKET_WS_URL;
     const wsClient = new PolymarketWebSocketClient(wsUrl); // Defaults to official URL if not provided
-    const restClient = new PolymarketRestClient();
     const marketIngestion = new MarketIngestionService(wsClient, restClient, wsServer);
 
-// Initialize Polymarket REST client and sync service
-const restClient = new PolymarketRestClient();
+// Initialize sync service
 const marketSync = new MarketSyncService(restClient, marketIngestion);
 
 // Initialize periodic sync service

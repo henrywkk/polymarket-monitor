@@ -98,7 +98,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
     const marketIngestion = new MarketIngestionService(wsClient, restClient, wsServer);
 
 // Initialize new market detector (will be passed to sync service)
-const newMarketDetector = new NewMarketDetector(marketIngestion.anomalyDetector);
+const newMarketDetector = new NewMarketDetector();
 
 // Initialize sync service
 const marketSync = new MarketSyncService(restClient, marketIngestion, newMarketDetector);

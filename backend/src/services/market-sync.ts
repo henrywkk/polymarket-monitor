@@ -3,7 +3,6 @@ import { PolymarketRestClient, PolymarketMarket } from './polymarket-rest';
 import { Market, Outcome } from '../models/Market';
 import { query } from '../config/database';
 import { NewMarketDetector } from './new-market-detector';
-import { AnomalyDetector } from './anomaly-detector';
 
 export class MarketSyncService {
   private restClient: PolymarketRestClient;

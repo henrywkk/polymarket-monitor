@@ -12,7 +12,7 @@
 
 import { redis } from '../config/redis';
 import { query } from '../config/database';
-import { AnomalyDetector, AlertEvent } from './anomaly-detector';
+import { AlertEvent } from './anomaly-detector';
 import { PolymarketMarket } from './polymarket-rest';
 
 export class NewMarketDetector {
@@ -28,7 +28,7 @@ export class NewMarketDetector {
     'disaster', 'crisis', 'emergency',
   ];
 
-  constructor(private anomalyDetector: AnomalyDetector) {}
+  constructor() {}
 
   /**
    * Initialize known markets set from database

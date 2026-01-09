@@ -10,6 +10,7 @@ import categoriesRoutes from './routes/categories';
 import statsRoutes from './routes/stats';
 import syncRoutes, { setSyncService, setRestClient } from './routes/sync';
 import tradesRoutes from './routes/trades';
+import alertsRoutes from './routes/alerts';
 import { PolymarketWebSocketClient } from './services/polymarket-client';
 import { MarketIngestionService } from './services/market-ingestion';
 import { WebSocketServer } from './services/websocket-server';
@@ -18,6 +19,9 @@ import { PolymarketRestClient } from './services/polymarket-rest';
 import { MarketSyncService } from './services/market-sync';
 import { PeriodicSyncService } from './services/periodic-sync';
 import { HighVolumeDiscoveryService } from './services/high-volume-discovery';
+import { AlertDispatcher } from './services/alert-dispatcher';
+import { WebhookChannel, WebSocketChannel, EmailChannel } from './services/notification-channels';
+import { AlertThrottle } from './services/alert-throttle';
 
 dotenv.config();
 
@@ -68,6 +72,7 @@ app.use('/api/categories', categoriesRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/trades', tradesRoutes);
+app.use('/api/alerts', alertsRoutes);
 
 // Error handling middleware
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -165,6 +170,24 @@ const startServer = async () => {
     highVolumeDiscovery.start(discoveryIntervalMinutes);
     console.log(`High-volume discovery started (interval: ${discoveryIntervalMinutes} minutes)`);
 
+    // Initialize alert system
+    const alertThrottle = new AlertThrottle();
+    const webhookChannel = new WebhookChannel();
+    const websocketChannel = new WebSocketChannel(wsServer);
+    const emailChannel = new EmailChannel();
+    
+    const alertDispatcher = new AlertDispatcher(
+      alertThrottle,
+      [webhookChannel, websocketChannel, emailChannel]
+    );
+    
+    // Store reference for graceful shutdown
+    alertDispatcherRef = alertDispatcher;
+    
+    // Start alert dispatcher
+    alertDispatcher.start();
+    console.log('[Alert System] Alert dispatcher started');
+
     // Connect to Polymarket WebSocket (non-blocking, graceful failure)
     wsClient.connect().then(() => {
       console.log('Polymarket WebSocket client connected');
@@ -183,11 +206,17 @@ const startServer = async () => {
   }
 };
 
+// Store alert dispatcher reference for graceful shutdown
+let alertDispatcherRef: AlertDispatcher | undefined;
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   periodicSync.stop();
   highVolumeDiscovery.stop();
+  if (alertDispatcherRef) {
+    alertDispatcherRef.stop();
+  }
   wsClient.disconnect();
   pool.end();
   process.exit(0);
@@ -197,6 +226,9 @@ process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
   periodicSync.stop();
   highVolumeDiscovery.stop();
+  if (alertDispatcherRef) {
+    alertDispatcherRef.stop();
+  }
   wsClient.disconnect();
   pool.end();
   process.exit(0);

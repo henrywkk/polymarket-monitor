@@ -109,5 +109,29 @@ export class WebSocketServer {
   getIO(): SocketIOServer {
     return this.io;
   }
+
+  /**
+   * Broadcast alert to all connected clients
+   */
+  broadcastAlert(alert: {
+    type: string;
+    severity: string;
+    title: string;
+    message: string;
+    marketId: string;
+    marketName?: string;
+    outcomeName?: string;
+    timestamp: string;
+    polymarketUrl?: string;
+    metrics?: Record<string, any>;
+  }): void {
+    // Broadcast to all clients (alerts are important, so no market-specific filtering)
+    this.io.emit('alert', alert);
+    
+    // Also broadcast to clients subscribed to this specific market
+    if (alert.marketId) {
+      this.io.to(`market:${alert.marketId}`).emit('alert', alert);
+    }
+  }
 }
 

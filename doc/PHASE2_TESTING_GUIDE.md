@@ -102,7 +102,7 @@ Each alert is stored as JSON with this structure:
 
 #### Alert Types
 
-- `insider_move`: Price >15% in <1min + volume acceleration (3σ)
+- `insider_move`: Price >15 percentage points (0.15 absolute change) in <1min + volume acceleration (3σ)
 - `fat_finger`: Price deviation >30% + reversion within 2 trades
 - `liquidity_vacuum`: Spread >10 cents OR depth drop >80% in <1min
 - `whale_trade`: Single trade >$10k USDC
@@ -247,7 +247,7 @@ GET fat_finger:85299:outcome-123
 #### Test 5: Insider Move Detection
 
 **Expected Behavior:**
-- When price moves >15% in <1min AND volume >3σ above average, an alert should be generated
+- When price moves >15 percentage points (0.15 absolute change) in <1min AND volume >3σ above average, an alert should be generated
 - Alert type: `insider_move`
 - Severity: `critical`
 
@@ -413,7 +413,7 @@ This will log:
 1. Thresholds are too low
    - **Solution:** Adjust thresholds in `anomaly-detector.ts`
    - Current thresholds:
-     - Price velocity: 15%
+     - Price velocity: 15 percentage points (0.15 absolute change)
      - Fat finger: 30%
      - Liquidity vacuum: 10 cents
      - Whale trade: $10k

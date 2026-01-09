@@ -13,7 +13,7 @@ export class MarketIngestionService {
   private wsClient: PolymarketWebSocketClient;
   private restClient: PolymarketRestClient;
   private wsServer?: WebSocketServer;
-  private anomalyDetector: AnomalyDetector;
+  public anomalyDetector: AnomalyDetector;
   private marketSyncService?: MarketSyncService; // Optional reference to sync service for auto-sync
   private activeMarkets = new Map<string, Set<string>>(); // marketId -> Set of outcomeIds
   private lastPersistedPrices = new Map<string, { price: number; timestamp: number }>(); // outcomeId -> { price, timestamp }

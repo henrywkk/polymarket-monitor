@@ -18,7 +18,7 @@ import {
 } from '../utils/statistics';
 
 export interface AlertEvent {
-  type: 'insider_move' | 'fat_finger' | 'liquidity_vacuum' | 'whale_trade' | 'volume_acceleration';
+  type: 'insider_move' | 'fat_finger' | 'liquidity_vacuum' | 'whale_trade' | 'volume_acceleration' | 'new_market' | 'new_outcome';
   marketId: string;
   outcomeId?: string;
   tokenId?: string;

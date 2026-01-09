@@ -22,6 +22,7 @@ import { HighVolumeDiscoveryService } from './services/high-volume-discovery';
 import { AlertDispatcher } from './services/alert-dispatcher';
 import { WebhookChannel, WebSocketChannel, EmailChannel } from './services/notification-channels';
 import { AlertThrottle } from './services/alert-throttle';
+import { NewMarketDetector } from './services/new-market-detector';
 
 dotenv.config();
 
@@ -96,8 +97,11 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
     const wsClient = new PolymarketWebSocketClient(wsUrl); // Defaults to official URL if not provided
     const marketIngestion = new MarketIngestionService(wsClient, restClient, wsServer);
 
+// Initialize new market detector (will be passed to sync service)
+const newMarketDetector = new NewMarketDetector(marketIngestion.anomalyDetector);
+
 // Initialize sync service
-const marketSync = new MarketSyncService(restClient, marketIngestion);
+const marketSync = new MarketSyncService(restClient, marketIngestion, newMarketDetector);
 
 // Enable auto-sync for unsynced markets
 marketIngestion.setMarketSyncService(marketSync);
@@ -152,6 +156,15 @@ const startServer = async () => {
     
     // Initialize database tables
     await initializeDatabase();
+    
+    // Initialize new market detector with known markets from database
+    await newMarketDetector.initializeKnownMarkets().catch((error: unknown) => {
+      console.error('Error initializing known markets:', error);
+    });
+    await newMarketDetector.initializeKnownOutcomes().catch((error: unknown) => {
+      console.error('Error initializing known outcomes:', error);
+    });
+    console.log('[New Market Detector] Initialized known markets and outcomes');
     
     // Note: Redis connection is non-blocking and happens in background
     // Server will start even if Redis is unavailable (with degraded functionality)

@@ -2,17 +2,28 @@ import { MarketIngestionService } from './market-ingestion';
 import { PolymarketRestClient, PolymarketMarket } from './polymarket-rest';
 import { Market, Outcome } from '../models/Market';
 import { query } from '../config/database';
+import { NewMarketDetector } from './new-market-detector';
+import { AnomalyDetector } from './anomaly-detector';
 
 export class MarketSyncService {
   private restClient: PolymarketRestClient;
   public ingestionService: MarketIngestionService;
+  private newMarketDetector: NewMarketDetector;
 
   constructor(
     restClient: PolymarketRestClient,
-    ingestionService: MarketIngestionService
+    ingestionService: MarketIngestionService,
+    newMarketDetector?: NewMarketDetector
   ) {
     this.restClient = restClient;
     this.ingestionService = ingestionService;
+    // Use provided detector or create new one
+    if (newMarketDetector) {
+      this.newMarketDetector = newMarketDetector;
+    } else {
+      const anomalyDetector = ingestionService.anomalyDetector;
+      this.newMarketDetector = new NewMarketDetector(anomalyDetector);
+    }
   }
 
   /**
@@ -190,6 +201,13 @@ export class MarketSyncService {
       }, {} as Record<string, number>);
       
       console.log(`[Sync] Market categories:`, categoryCounts);
+
+      // Detect new markets before syncing
+      const newMarketAlerts = await this.newMarketDetector.detectNewMarkets(allMarkets);
+      for (const alert of newMarketAlerts) {
+        await this.ingestionService.anomalyDetector.storeAlert(alert);
+        console.log(`[New Market] Alert generated for: ${alert.data.marketTitle}`);
+      }
 
       let synced = 0;
       let skipped = 0;
@@ -559,8 +577,18 @@ export class MarketSyncService {
             timestamp: Date.now()
           });
         }
-      }
-    } else if (pmMarket.conditionId || pmMarket.questionId || pmMarket.tokenId) {
+
+        // Detect new outcomes after syncing
+        const currentOutcomes = outcomesWithTokens.map(o => ({
+          id: o.id || o.tokenId || `${marketId}-${o.outcome}`,
+          outcome: o.outcome,
+        }));
+        const newOutcomeAlerts = await this.newMarketDetector.detectNewOutcomes(marketId, currentOutcomes);
+        for (const alert of newOutcomeAlerts) {
+          await this.ingestionService.anomalyDetector.storeAlert(alert);
+          console.log(`[New Outcome] Alert generated for: ${alert.data.newOutcome} in ${alert.data.marketTitle}`);
+        }
+      } else if (pmMarket.conditionId || pmMarket.questionId || pmMarket.tokenId) {
       // Binary market - create Yes/No outcomes
       // For binary markets, we need to fetch token_ids from CLOB API
       // For now, use conditionId as placeholder (will need to fetch actual token_ids)

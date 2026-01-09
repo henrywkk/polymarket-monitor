@@ -667,6 +667,25 @@ export class AlertDispatcher {
         };
         break;
 
+      case 'new_market':
+        const marketTitle = alert.data.marketTitle || 'Untitled Market';
+        const marketCategory = alert.data.category || 'Uncategorized';
+        const matchesKeywords = alert.data.matchesKeywords || false;
+        baseFormatted.title = matchesKeywords ? '🆕 NEW MARKET (High Interest)' : '🆕 NEW MARKET';
+        baseFormatted.message = `${marketTitle} | Category: ${marketCategory}`;
+        baseFormatted.severity = matchesKeywords ? 'high' : 'medium';
+        break;
+
+      case 'new_outcome':
+        const newOutcome = alert.data.newOutcome || 'New Outcome';
+        const outcomeMarketTitle = alert.data.marketTitle || 'Market';
+        const outcomeCategory = alert.data.category || 'Uncategorized';
+        const outcomeMatchesKeywords = alert.data.matchesKeywords || false;
+        baseFormatted.title = outcomeMatchesKeywords ? '➕ NEW OUTCOME (High Interest)' : '➕ NEW OUTCOME';
+        baseFormatted.message = `${newOutcome} added to ${outcomeMarketTitle} | Category: ${outcomeCategory}`;
+        baseFormatted.severity = outcomeMatchesKeywords ? 'high' : 'medium';
+        break;
+
       default:
         baseFormatted.title = `Alert: ${alert.type}`;
         baseFormatted.message = alert.message;

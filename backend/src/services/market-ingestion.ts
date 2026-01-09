@@ -253,6 +253,39 @@ export class MarketIngestionService {
       await redis.hset(`market:${marketId}:prices`, outcome.token_id, JSON.stringify(lastPrice));
       await redis.expire(`market:${marketId}:prices`, 3600);
 
+      // Create minimal orderbook metrics from best bid/ask if we don't have full orderbook data
+      // This provides basic spread information even when full orderbook isn't available
+      if (price.bid > 0 && price.ask > 0) {
+        const spread = price.ask - price.bid;
+        const spreadPercent = midPrice > 0 ? (spread / midPrice) * 100 : 0;
+        
+        // Only store if spread is reasonable (not obviously bad data)
+        if (spreadPercent <= 50 && price.bid > 0 && price.ask > 0 && price.bid < 1 && price.ask < 1) {
+          // Create minimal orderbook entry from price data
+          const minimalOrderbook = {
+            spread,
+            spreadPercent,
+            depth2Percent: 0, // Can't calculate without full orderbook
+            bestBid: price.bid,
+            bestAsk: price.ask,
+            midPrice,
+            totalBidDepth: 0,
+            totalAskDepth: 0,
+            timestamp: Date.now(),
+            marketId,
+            outcomeId: outcome.id,
+          };
+          
+          // Store in Redis with shorter TTL since it's less complete
+          await RedisSlidingWindow.add(
+            `orderbook:${outcome.token_id}`,
+            minimalOrderbook,
+            300000, // 5 minutes (shorter than full orderbook)
+            60 // Max 60 data points
+          );
+        }
+      }
+      
       // Throttled price history persistence
       const now = Date.now();
       const lastPersisted = this.lastPersistedPrices.get(outcome.id);
@@ -402,6 +435,18 @@ export class MarketIngestionService {
       
       // Calculate orderbook metrics for this specific outcome
       const metrics = this.calculateOrderbookMetrics(bids, asks);
+      
+      // Validate metrics - filter out obviously incorrect data
+      // If spread is > 50% of mid-price, it's likely bad data (e.g., stale or wrong outcome)
+      if (metrics.spreadPercent > 50 || metrics.bestBid <= 0 || metrics.bestAsk <= 0 || metrics.bestBid >= 1 || metrics.bestAsk >= 1) {
+        console.log(`[Orderbook] Skipping invalid metrics for asset ${assetId}: spread=${(metrics.spread * 100).toFixed(2)}¢ (${metrics.spreadPercent.toFixed(2)}%), bid=${metrics.bestBid}, ask=${metrics.bestAsk}`);
+        return;
+      }
+      
+      // Log orderbook data for debugging (only for first few entries to avoid spam)
+      if (Math.random() < 0.01) { // Log 1% of events
+        console.log(`[Orderbook] Asset ${assetId}: ${bids.length} bids, ${asks.length} asks, spread=${(metrics.spread * 100).toFixed(2)}¢, bid=${metrics.bestBid.toFixed(4)}, ask=${metrics.bestAsk.toFixed(4)}`);
+      }
       
       // Store orderbook metrics in Redis sliding window (60 minutes, max 3600 data points)
       // Key is per token_id (which is per outcome), so each outcome has its own orderbook

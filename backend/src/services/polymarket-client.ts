@@ -210,6 +210,11 @@ export class PolymarketWebSocketClient {
         const bids = this.parseOrderbookSide(msg.bids);
         const asks = this.parseOrderbookSide(msg.asks);
         
+        // Log when we receive orderbook data (occasionally for debugging)
+        if (Math.random() < 0.01) { // Log 1% of events
+          console.log(`[WebSocket] Received orderbook for ${assetId}: ${bids.length} bids, ${asks.length} asks`);
+        }
+        
         // Emit orderbook event
         this.emitOrderbookEvent(assetId, {
           bids,
@@ -219,7 +224,10 @@ export class PolymarketWebSocketClient {
         
         // Also emit price event for backward compatibility
         if (bids.length > 0 && asks.length > 0) {
-          this.emitPriceEvent(assetId, bids[0].price, asks[0].price, 'order_book_changed');
+          // Sort before using first element
+          const sortedBids = [...bids].sort((a, b) => b.price - a.price);
+          const sortedAsks = [...asks].sort((a, b) => a.price - b.price);
+          this.emitPriceEvent(assetId, sortedBids[0].price, sortedAsks[0].price, 'order_book_changed');
         }
       }
       return;

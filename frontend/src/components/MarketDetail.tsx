@@ -57,16 +57,19 @@ const OutcomeRow = ({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className={`font-bold ${isPrimary ? 'text-blue-400' : 'text-white'}`}>
-                {outcome.outcome}
-              </span>
-              {isPrimary && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-bold uppercase tracking-tighter">
-                  Primary
-                </span>
-              )}
-            </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`font-bold ${isPrimary ? 'text-blue-400' : 'text-white'}`}>
+                      {outcome.outcome}
+                    </span>
+                    {isPrimary && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-bold uppercase tracking-tighter">
+                        Primary
+                      </span>
+                    )}
+                    <span className="text-[10px] text-slate-500 font-mono px-2 py-0.5 rounded bg-slate-800/50 border border-slate-700/50" title="Outcome ID for alert verification">
+                      ID: {outcome.id.slice(0, 8)}...
+                    </span>
+                  </div>
             <div className="flex items-center gap-4 mt-1">
               <span className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1">
                 <PieChart className="w-3 h-3" />

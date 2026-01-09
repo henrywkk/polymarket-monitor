@@ -114,8 +114,32 @@ export class AnomalyDetector {
         return null;
       }
 
+      // Skip velocity check if lastPrice is 0 or very small (< 0.01)
+      // This prevents false positives from initial price data or data errors
+      // Also skip if currentPrice is 0 or invalid
+      if (lastPrice <= 0.01 || currentPrice <= 0.01 || !isFinite(lastPrice) || !isFinite(currentPrice)) {
+        // Update stored price but don't check velocity
+        await redis.setex(lastPriceKey, 120, JSON.stringify({
+          price: currentPrice,
+          timestamp: Date.now(),
+        }));
+        return null;
+      }
+
       // Calculate percentage change
       const percentageChange = calculatePercentageChange(lastPrice, currentPrice);
+      
+      // Additional validation: Skip if percentage change is unreasonably high (>1000%)
+      // This catches cases where initial data was incorrect
+      if (Math.abs(percentageChange) > 1000) {
+        console.warn(`[Price Velocity] Skipping unreasonably high percentage change: ${percentageChange.toFixed(2)}% (lastPrice: ${lastPrice}, currentPrice: ${currentPrice})`);
+        // Update stored price but don't generate alert
+        await redis.setex(lastPriceKey, 120, JSON.stringify({
+          price: currentPrice,
+          timestamp: Date.now(),
+        }));
+        return null;
+      }
 
       if (Math.abs(percentageChange) > this.PRICE_VELOCITY_THRESHOLD) {
         // Price moved >15% in <1min - potential insider move
@@ -152,6 +176,9 @@ export class AnomalyDetector {
 
   /**
    * Detect volume acceleration (volume >3σ above hourly average)
+   * 
+   * IMPORTANT: We need to compare 1-minute volume aggregates, not individual trade sizes.
+   * The currentVolume parameter should be the sum of trades in the last 1 minute.
    */
   async detectVolumeAcceleration(
     marketId: string,
@@ -160,15 +187,59 @@ export class AnomalyDetector {
     currentVolume: number
   ): Promise<AlertEvent | null> {
     try {
-      const volumeKey = `trades:${tokenId}`;
-      const { zScore, mean, stdDev } = await this.calculateZScoreForValue(
-        volumeKey,
-        currentVolume,
-        3600000 // 60 minutes
+      // Skip if volume is too small (< $100) to avoid false positives
+      if (currentVolume < 100) {
+        return null;
+      }
+
+      // Get all trades from last 60 minutes
+      const tradesKey = `trades:${tokenId}`;
+      const allTrades = await RedisSlidingWindow.getRange(
+        tradesKey,
+        Date.now() - 3600000, // Last 60 minutes
+        Date.now()
       );
 
+      if (allTrades.length < 10) {
+        // Need at least 10 trades for meaningful statistics
+        return null;
+      }
+
+      // Aggregate trades into 1-minute windows
+      const oneMinuteWindows: Map<number, number> = new Map();
+      
+      for (const trade of allTrades) {
+        const tradeTimestamp = trade.timestamp || 0;
+        const tradeSize = trade.size || 0;
+        
+        // Round timestamp to nearest minute
+        const windowKey = Math.floor(tradeTimestamp / 60000) * 60000;
+        const currentWindowVolume = oneMinuteWindows.get(windowKey) || 0;
+        oneMinuteWindows.set(windowKey, currentWindowVolume + tradeSize);
+      }
+
+      // Get 1-minute volume values (excluding current minute to avoid double-counting)
+      const windowVolumes = Array.from(oneMinuteWindows.values());
+      const historicalVolumes = windowVolumes.slice(0, -1); // Exclude last window (current)
+
+      if (historicalVolumes.length < 5) {
+        // Need at least 5 historical 1-minute windows
+        return null;
+      }
+
+      // Calculate Z-score for current 1-minute volume against historical 1-minute volumes
+      const mean = calculateMean(historicalVolumes);
+      const stdDev = calculateStandardDeviation(historicalVolumes);
+      const zScore = calculateZScore(currentVolume, mean, stdDev);
+
       if (zScore === null) {
-        // Not enough data for Z-score calculation
+        return null;
+      }
+
+      // Additional validation: Skip if Z-score is unreasonably high (>50σ)
+      // This catches cases where initial data was incorrect or there's a data error
+      if (zScore > 50) {
+        console.warn(`[Volume Acceleration] Skipping unreasonably high Z-score: ${zScore.toFixed(2)}σ (currentVolume: ${currentVolume}, mean: ${mean}, stdDev: ${stdDev})`);
         return null;
       }
 

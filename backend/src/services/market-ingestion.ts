@@ -478,7 +478,7 @@ export class MarketIngestionService {
 
       if (priceVelocityAlert) {
         // Check for volume acceleration to confirm insider move
-        // Get recent volume from trade history
+        // Get recent volume from trade history (last 1 minute)
         const recentTrades = await RedisSlidingWindow.getRange(
           `trades:${outcome.token_id}`,
           Date.now() - 60000, // Last 1 minute
@@ -489,7 +489,9 @@ export class MarketIngestionService {
           return sum + (trade.size || 0);
         }, 0);
 
-        if (recentVolume > 0) {
+        // Only check insider move if we have meaningful volume (> $100)
+        // This prevents false positives from tiny trades
+        if (recentVolume > 100) {
           const insiderMoveAlert = await this.anomalyDetector.detectInsiderMove(
             marketId,
             outcome.id,
@@ -501,6 +503,15 @@ export class MarketIngestionService {
           if (insiderMoveAlert) {
             await this.anomalyDetector.storeAlert(insiderMoveAlert);
           }
+        } else {
+          // Store price velocity alert separately if volume is low
+          // This helps debug why insider move wasn't triggered
+          await this.anomalyDetector.storeAlert({
+            ...priceVelocityAlert,
+            type: 'volume_acceleration', // Change type since volume check failed
+            severity: 'low',
+            message: `Price velocity detected but volume too low: ${priceVelocityAlert.message} (Volume: $${recentVolume.toFixed(2)})`,
+          });
         }
       }
 

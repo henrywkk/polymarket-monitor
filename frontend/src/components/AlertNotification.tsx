@@ -54,6 +54,19 @@ export const AlertNotification = ({
     maxAlerts: maxVisible * 2, // Keep more in memory than visible
   });
   const [visibleAlerts, setVisibleAlerts] = useState<Set<string>>(new Set());
+  const [isAlertCenterOpen, setIsAlertCenterOpen] = useState(false);
+
+  // Listen for alert center open/close state
+  useEffect(() => {
+    const handleAlertCenterToggle = (event: CustomEvent) => {
+      setIsAlertCenterOpen(event.detail.isOpen);
+    };
+
+    window.addEventListener('alertCenterToggle' as any, handleAlertCenterToggle as EventListener);
+    return () => {
+      window.removeEventListener('alertCenterToggle' as any, handleAlertCenterToggle as EventListener);
+    };
+  }, []);
 
   // Show new alerts
   useEffect(() => {
@@ -89,14 +102,19 @@ export const AlertNotification = ({
   }
 
   const positionClasses = {
-    'top-right': 'top-4 right-4',
-    'top-left': 'top-4 left-4',
+    'top-right': 'top-20 right-4', // Lower to avoid covering bell icon (top-20 = 5rem = 80px)
+    'top-left': 'top-20 left-4',
     'bottom-right': 'bottom-4 right-4',
     'bottom-left': 'bottom-4 left-4',
   };
 
+  // Don't show toasts when alert center is open
+  if (isAlertCenterOpen) {
+    return null;
+  }
+
   return (
-    <div className={`fixed ${positionClasses[position]} z-50 space-y-2 max-w-md`}>
+    <div className={`fixed ${positionClasses[position]} z-40 space-y-2 max-w-md`}>
       {displayAlerts.map((alert) => (
         <AlertToast
           key={alert.timestamp}

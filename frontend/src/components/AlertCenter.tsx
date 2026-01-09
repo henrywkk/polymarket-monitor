@@ -54,6 +54,7 @@ export const AlertCenter = ({ position = 'top-right' }: AlertCenterProps) => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        window.dispatchEvent(new CustomEvent('alertCenterToggle', { detail: { isOpen: false } }));
       }
     };
 
@@ -65,9 +66,12 @@ export const AlertCenter = ({ position = 'top-right' }: AlertCenterProps) => {
     }
   }, [isOpen]);
 
-  // Filter unread alerts
+  // Filter unread alerts for badge count
   const unreadAlerts = alerts.filter(alert => !readAlertTimestamps.has(alert.timestamp));
   const unreadCount = unreadAlerts.length;
+  
+  // Show all alerts in dropdown (not just unread), but mark which are read
+  const allAlerts = alerts; // Show all alerts, not just unread
 
   // Mark alert as read
   const markAsRead = (timestamp: string) => {
@@ -201,7 +205,10 @@ export const AlertCenter = ({ position = 'top-right' }: AlertCenterProps) => {
                 </>
               )}
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setIsOpen(false);
+                  window.dispatchEvent(new CustomEvent('alertCenterToggle', { detail: { isOpen: false } }));
+                }}
                 className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition-colors"
                 title="Close"
                 aria-label="Close alerts"
@@ -213,28 +220,32 @@ export const AlertCenter = ({ position = 'top-right' }: AlertCenterProps) => {
 
           {/* Alerts List */}
           <div className="overflow-y-auto flex-1">
-            {unreadAlerts.length === 0 ? (
+            {allAlerts.length === 0 ? (
               <div className="p-8 text-center">
                 <Bell className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <p className="text-sm text-slate-400">No unread alerts</p>
+                <p className="text-sm text-slate-400">No alerts</p>
                 <p className="text-xs text-slate-500 mt-1">You're all caught up!</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-800/60">
-                {unreadAlerts.map((alert) => (
-                  <AlertItem
-                    key={alert.timestamp}
-                    alert={alert}
-                    onMarkAsRead={() => markAsRead(alert.timestamp)}
-                    onDismiss={() => {
-                      markAsRead(alert.timestamp);
-                      setIsOpen(false);
-                    }}
-                    getSeverityColor={getSeverityColor}
-                    getAlertIcon={getAlertIcon}
-                    formatTimestamp={formatTimestamp}
-                  />
-                ))}
+                {allAlerts.map((alert) => {
+                  const isRead = readAlertTimestamps.has(alert.timestamp);
+                  return (
+                    <AlertItem
+                      key={alert.timestamp}
+                      alert={alert}
+                      isRead={isRead}
+                      onMarkAsRead={() => markAsRead(alert.timestamp)}
+                      onDismiss={() => {
+                        markAsRead(alert.timestamp);
+                        setIsOpen(false);
+                      }}
+                      getSeverityColor={getSeverityColor}
+                      getAlertIcon={getAlertIcon}
+                      formatTimestamp={formatTimestamp}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
@@ -246,6 +257,7 @@ export const AlertCenter = ({ position = 'top-right' }: AlertCenterProps) => {
 
 interface AlertItemProps {
   alert: Alert;
+  isRead: boolean;
   onMarkAsRead: () => void;
   onDismiss: () => void;
   getSeverityColor: (severity: string) => string;
@@ -255,6 +267,7 @@ interface AlertItemProps {
 
 const AlertItem = ({
   alert,
+  isRead,
   onMarkAsRead,
   onDismiss,
   getSeverityColor,
@@ -265,15 +278,20 @@ const AlertItem = ({
   const icon = getAlertIcon(alert.type);
 
   return (
-    <div className={`p-4 border-l-4 ${severityColor} hover:bg-slate-800/30 transition-colors`}>
+    <div className={`p-4 border-l-4 ${severityColor} hover:bg-slate-800/30 transition-colors ${isRead ? 'opacity-60' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 flex-1 min-w-0">
           <div className="text-xl flex-shrink-0">{icon}</div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1">
-              <h4 className="text-sm font-semibold text-slate-200 line-clamp-1">
-                {alert.title}
-              </h4>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <h4 className={`text-sm font-semibold line-clamp-1 ${isRead ? 'text-slate-400' : 'text-slate-200'}`}>
+                  {alert.title}
+                </h4>
+                {!isRead && (
+                  <span className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full" title="Unread" />
+                )}
+              </div>
               <button
                 onClick={onDismiss}
                 className="flex-shrink-0 p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded transition-colors"
@@ -282,7 +300,7 @@ const AlertItem = ({
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-            <p className="text-xs text-slate-400 line-clamp-2 mb-2">{alert.message}</p>
+            <p className={`text-xs line-clamp-2 mb-2 ${isRead ? 'text-slate-500' : 'text-slate-400'}`}>{alert.message}</p>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-slate-500">{formatTimestamp(alert.timestamp)}</span>
               {alert.polymarketUrl && (

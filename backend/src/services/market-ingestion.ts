@@ -8,10 +8,12 @@ import { RedisSlidingWindow } from './redis-storage';
 
 export class MarketIngestionService {
   private wsClient: PolymarketWebSocketClient;
+  private restClient: PolymarketRestClient;
   private wsServer?: WebSocketServer;
   private activeMarkets = new Map<string, Set<string>>(); // marketId -> Set of outcomeIds
   private lastPersistedPrices = new Map<string, { price: number; timestamp: number }>(); // outcomeId -> { price, timestamp }
   private warnedAssetIds = new Set<string>(); // Track asset_ids we've warned about to reduce log noise
+  private orderbookRefreshInterval?: NodeJS.Timeout;
   private PERSIST_INTERVAL_MS = 60000; // Persist at most once per minute per outcome
   private PRICE_CHANGE_THRESHOLD = 0.01; // OR if price changes by more than 1%
 

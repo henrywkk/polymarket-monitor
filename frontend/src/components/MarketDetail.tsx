@@ -429,7 +429,7 @@ export const MarketDetail = () => {
       {/* Orderbook Metrics */}
       {orderbookData && orderbookData.byOutcome && Object.keys(orderbookData.byOutcome).length > 0 && (() => {
         // Filter out invalid orderbook data (spread > 50% or invalid prices)
-        const validOutcomes = Object.entries(orderbookData.byOutcome).filter(([outcomeName, metrics]) => {
+        const validOutcomes = Object.entries(orderbookData.byOutcome).filter(([, metrics]) => {
           const latest = Array.isArray(metrics) && metrics.length > 0 ? metrics[0] : null;
           if (!latest) return false;
           // Validate: spread should be reasonable, prices should be between 0 and 1

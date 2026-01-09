@@ -397,20 +397,18 @@ export class AlertDispatcher {
       }
 
       // Step 4: If API failed, try to find parent event in database by question pattern
-      // Pattern: "Will [Outcome] win [Category] at the [Award]?" -> "[Award]: [Category] Winner"
+      // Multiple patterns supported:
+      // 1. Awards: "Will [Outcome] win [Category] at the [Award]?" -> "[Award]: [Category] Winner"
+      // 2. IPO Market Cap: "Will [Company]'s market cap be [range] at market close on IPO day?" -> "[Company] IPO Closing Market Cap"
       if (!eventSlug && question) {
         try {
-          // Extract award and category from question
-          // Example: "Will Severance win Best Television Series – Drama at the 83rd Golden Globes?"
-          //          -> Award: "Golden Globes", Category: "Best Television Series – Drama"
-          const match = question.match(/win\s+(.+?)\s+at\s+the\s+(\d+[a-z]{2})?\s*(.+?)(?:\?|$)/i);
-          if (match) {
-            const category = match[1]?.trim();
-            const awardName = match[3]?.trim();
+          // Pattern 1: Awards (e.g., "Will Severance win Best Television Series – Drama at the 83rd Golden Globes?")
+          const awardMatch = question.match(/win\s+(.+?)\s+at\s+the\s+(\d+[a-z]{2})?\s*(.+?)(?:\?|$)/i);
+          if (awardMatch) {
+            const category = awardMatch[1]?.trim();
+            const awardName = awardMatch[3]?.trim();
             
-            // Try to find parent market with pattern: "[Award]: [Category] Winner"
             if (category && awardName) {
-              // Build pattern: "Golden Globes: Best Television Series – Drama Winner"
               const parentPattern = `${awardName}: ${category} Winner`;
               
               const parentResult = await query(
@@ -426,9 +424,47 @@ export class AlertDispatcher {
               if (parentResult.rows.length > 0) {
                 const foundSlug = parentResult.rows[0].slug;
                 if (foundSlug) {
-                  console.log(`[Alert Dispatcher] Found parent event slug via database: ${foundSlug} for market ${marketId}`);
+                  console.log(`[Alert Dispatcher] Found parent event slug via database (award pattern): ${foundSlug} for market ${marketId}`);
                   await redis.setex(cacheKey, 86400, foundSlug);
                   return foundSlug;
+                }
+              }
+            }
+          }
+
+          // Pattern 2: IPO Market Cap (e.g., "Will Anthropic's market cap be between 200B and 300B at market close on IPO day?")
+          // Extract company name and construct parent pattern: "[Company] IPO Closing Market Cap"
+          // Also handles: "Will [Company]'s market cap be [condition] at market close on IPO day?"
+          const ipoMatch = question.match(/will\s+([^']+?)'s\s+market\s+cap\s+be\s+(?:between|less\s+than|greater\s+than|exactly|over|under)\s+.+?\s+at\s+market\s+close\s+on\s+ipo\s+day/i);
+          if (ipoMatch) {
+            const companyName = ipoMatch[1]?.trim();
+            
+            if (companyName) {
+              // Try multiple parent patterns:
+              // 1. "[Company] IPO Closing Market Cap" (most common)
+              // 2. "[Company] IPO Market Cap" (alternative)
+              const parentPatterns = [
+                `${companyName} IPO Closing Market Cap`,
+                `${companyName} IPO Market Cap`,
+              ];
+              
+              for (const parentPattern of parentPatterns) {
+                const parentResult = await query(
+                  `SELECT id, slug FROM markets 
+                   WHERE question ILIKE $1 
+                     AND slug NOT LIKE 'will-%'
+                   ORDER BY created_at DESC 
+                   LIMIT 1`,
+                  [`%${parentPattern}%`]
+                );
+                
+                if (parentResult.rows.length > 0) {
+                  const foundSlug = parentResult.rows[0].slug;
+                  if (foundSlug) {
+                    console.log(`[Alert Dispatcher] Found parent event slug via database (IPO pattern): ${foundSlug} for market ${marketId}`);
+                    await redis.setex(cacheKey, 86400, foundSlug);
+                    return foundSlug;
+                  }
                 }
               }
             }

@@ -463,7 +463,10 @@ export const MarketDetail = () => {
                       </span>
                     </div>
                     {latest.spread > 0.10 && (
-                      <div className="mt-2 px-2 py-1 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400 font-bold">
+                      <div 
+                        className="mt-2 px-2 py-1 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400 font-bold cursor-help"
+                        title="Liquidity Vacuum: The bid-ask spread is unusually wide (>10 cents), indicating low liquidity. This means there's a large gap between what buyers are willing to pay and what sellers are asking, making it harder to execute trades at favorable prices."
+                      >
                         ⚠️ Liquidity Vacuum
                       </div>
                     )}

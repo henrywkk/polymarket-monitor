@@ -459,8 +459,13 @@ export class MarketIngestionService {
       };
     }
     
-    const bestBid = bids[0].price;
-    const bestAsk = asks[0].price;
+    // Sort bids descending (highest price first = best bid)
+    // Sort asks ascending (lowest price first = best ask)
+    const sortedBids = [...bids].sort((a, b) => b.price - a.price);
+    const sortedAsks = [...asks].sort((a, b) => a.price - b.price);
+    
+    const bestBid = sortedBids[0].price;
+    const bestAsk = sortedAsks[0].price;
     const midPrice = (bestBid + bestAsk) / 2;
     const spread = bestAsk - bestBid;
     const spreadPercent = midPrice > 0 ? (spread / midPrice) * 100 : 0;
@@ -472,23 +477,23 @@ export class MarketIngestionService {
     
     let depth2Percent = 0;
     
-    // Sum bid depth within range
-    for (const bid of bids) {
+    // Sum bid depth within range (use sorted bids)
+    for (const bid of sortedBids) {
       if (bid.price >= minPrice && bid.price <= midPrice) {
         depth2Percent += bid.size;
       }
     }
     
-    // Sum ask depth within range
-    for (const ask of asks) {
+    // Sum ask depth within range (use sorted asks)
+    for (const ask of sortedAsks) {
       if (ask.price >= midPrice && ask.price <= maxPrice) {
         depth2Percent += ask.size;
       }
     }
     
-    // Calculate total depth on each side
-    const totalBidDepth = bids.reduce((sum, bid) => sum + bid.size, 0);
-    const totalAskDepth = asks.reduce((sum, ask) => sum + ask.size, 0);
+    // Calculate total depth on each side (use sorted arrays)
+    const totalBidDepth = sortedBids.reduce((sum, bid) => sum + bid.size, 0);
+    const totalAskDepth = sortedAsks.reduce((sum, ask) => sum + ask.size, 0);
     
     return {
       spread,

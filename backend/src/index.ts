@@ -139,6 +139,8 @@ const startServer = async () => {
           await new Promise(resolve => setTimeout(resolve, retryDelay));
         } else {
           console.error(`Database connection failed after ${maxRetries} attempts:`, error);
+          // In production, we might want to continue without DB for health checks
+          // But for now, database is required
           throw error;
         }
       }
@@ -150,6 +152,9 @@ const startServer = async () => {
     
     // Initialize database tables
     await initializeDatabase();
+    
+    // Note: Redis connection is non-blocking and happens in background
+    // Server will start even if Redis is unavailable (with degraded functionality)
 
         // Run initial data maintenance (prune old history)
         marketIngestion.pruneOldHistory(7).catch(err => {

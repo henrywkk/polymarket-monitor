@@ -355,6 +355,20 @@ export class MarketSyncService {
       question = 'Untitled Market';
     }
 
+    // Fetch question_id from CLOB API if we have a conditionId
+    // This is the parent event identifier that links child markets to parent events
+    let questionId: string | undefined = pmMarket.questionId;
+    if (!questionId && pmMarket.conditionId) {
+      try {
+        questionId = await this.restClient.fetchQuestionId(pmMarket.conditionId);
+        if (questionId) {
+          console.log(`[Sync] Fetched question_id ${questionId} for market ${marketId}`);
+        }
+      } catch (error) {
+        // Silently continue - question_id is optional
+      }
+    }
+
     // Convert Polymarket market to our Market format
     const market: Omit<Market, 'createdAt' | 'updatedAt'> = {
       id: marketId,
@@ -371,6 +385,7 @@ export class MarketSyncService {
       volume24h: pmMarket.volume24h ? parseFloat(String(pmMarket.volume24h)) : 0,
       liquidity: pmMarket.liquidity ? parseFloat(String(pmMarket.liquidity)) : 0,
       activityScore: 0, // Initialize to 0, will be calculated based on actual activity
+      questionId: questionId || null,
     };
 
     // Upsert market

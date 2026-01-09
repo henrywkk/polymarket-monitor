@@ -625,6 +625,31 @@ export class PolymarketRestClient {
       return [];
     }
   }
+
+  /**
+   * Fetch question_id (parent event identifier) from CLOB API
+   * This is the most reliable source for question_id
+   * 
+   * @param conditionId The market condition_id
+   * @returns The question_id if found, undefined otherwise
+   */
+  async fetchQuestionId(conditionId: string): Promise<string | undefined> {
+    try {
+      const endpoint = `${POLYMARKET_API_BASE}/markets/${conditionId}`;
+      const response = await axios.get<any>(endpoint, { timeout: 5000 });
+      const data = response.data;
+      
+      const questionId = data.question_id || data.questionId;
+      if (questionId) {
+        return questionId;
+      }
+      
+      return undefined;
+    } catch (error) {
+      // Silently fail - question_id is optional
+      return undefined;
+    }
+  }
 }
 
 export const polymarketRest = new PolymarketRestClient();

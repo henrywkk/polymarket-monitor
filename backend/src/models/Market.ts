@@ -10,6 +10,7 @@ export interface Market {
   liquidity?: number;
   lastTradeAt?: Date;
   activityScore?: number;
+  questionId?: string | null; // Parent event identifier from Polymarket API
   createdAt: Date;
   updatedAt: Date;
 }

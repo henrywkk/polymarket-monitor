@@ -216,8 +216,8 @@ export class MarketIngestionService {
       const activityScore = Math.min(Math.max(market.activityScore || 0, 0), 100);
 
       await query(
-        `INSERT INTO markets (id, question, slug, category, end_date, image_url, volume, volume_24h, liquidity, activity_score)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO markets (id, question, slug, category, end_date, image_url, volume, volume_24h, liquidity, activity_score, question_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (id) 
          DO UPDATE SET 
            question = EXCLUDED.question,
@@ -229,6 +229,7 @@ export class MarketIngestionService {
            volume_24h = EXCLUDED.volume_24h,
            liquidity = EXCLUDED.liquidity,
            activity_score = EXCLUDED.activity_score,
+           question_id = EXCLUDED.question_id,
            updated_at = CURRENT_TIMESTAMP`,
         [
           market.id,
@@ -241,6 +242,7 @@ export class MarketIngestionService {
           market.volume24h || 0,
           market.liquidity || 0,
           activityScore,
+          market.questionId || null,
         ]
       );
       // Removed verbose logging to reduce Railway log rate limit

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS markets (
     liquidity DECIMAL(20, 8) DEFAULT 0,
     last_trade_at TIMESTAMP,
     activity_score DECIMAL(10, 5) DEFAULT 0,
+    question_id VARCHAR(255), -- Parent event identifier from Polymarket API
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS market_stats_history (
 CREATE INDEX IF NOT EXISTS idx_markets_category ON markets(category);
 CREATE INDEX IF NOT EXISTS idx_markets_end_date ON markets(end_date);
 CREATE INDEX IF NOT EXISTS idx_markets_volume_24h ON markets(volume_24h DESC);
+CREATE INDEX IF NOT EXISTS idx_markets_question_id ON markets(question_id);
 CREATE INDEX IF NOT EXISTS idx_outcomes_market_id ON outcomes(market_id);
 CREATE INDEX IF NOT EXISTS idx_price_history_market_id ON price_history(market_id);
 CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);

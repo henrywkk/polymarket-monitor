@@ -314,9 +314,10 @@ export class AlertDispatcher {
 
       // Step 1: Try to fetch market data first (might be condition_id)
       // This will give us the question_id or event_id
+      // Prioritize CLOB API as it reliably returns question_id field
       const marketEndpoints = [
+        `https://clob.polymarket.com/markets/${marketId}`, // CLOB API is most reliable for question_id
         `https://gamma-api.polymarket.com/markets/${marketId}`,
-        `https://clob.polymarket.com/markets/${marketId}`,
         `https://api.polymarket.com/v2/markets/${marketId}`,
       ];
 
@@ -335,17 +336,40 @@ export class AlertDispatcher {
           const data = response.data;
           
           // Extract question_id or event_id from market data
-          questionId = data.question_id || data.questionId || data.event?.question_id || data.event?.questionId;
-          eventId = data.event_id || data.eventId || data.event?.id;
+          // Check multiple possible field names and nested structures
+          questionId = data.question_id || 
+                      data.questionId || 
+                      data.event?.question_id || 
+                      data.event?.questionId ||
+                      data.parent?.question_id ||
+                      data.parentEvent?.question_id;
           
-          // Sometimes the slug is directly in the market data
+          eventId = data.event_id || 
+                   data.eventId || 
+                   data.event?.id ||
+                   data.parent?.id ||
+                   data.parentEvent?.id;
+          
+          // Sometimes the slug is directly in the market data or event object
           eventSlug = data.event?.slug || 
+                     data.event?.market_slug ||
+                     data.parent?.slug ||
+                     data.parentEvent?.slug ||
                      data.slug || 
                      data.eventSlug ||
-                     data.market_slug ||
-                     (data.event && (data.event.market_slug || data.event.slug));
+                     data.market_slug;
 
+          // If we found question_id/event_id or slug, log for debugging
           if (questionId || eventId || eventSlug) {
+            if (questionId && questionId !== marketId) {
+              console.log(`[Alert Dispatcher] Found question_id ${questionId} for market ${marketId} (different from market ID)`);
+            }
+            if (eventId && eventId !== marketId) {
+              console.log(`[Alert Dispatcher] Found event_id ${eventId} for market ${marketId} (different from market ID)`);
+            }
+            if (eventSlug && eventSlug !== storedSlug) {
+              console.log(`[Alert Dispatcher] Found event slug ${eventSlug} directly in market data`);
+            }
             break; // Found what we need
           }
         } catch (error) {
@@ -353,12 +377,69 @@ export class AlertDispatcher {
         }
       }
 
-      // Step 2: If we found question_id/event_id but no slug, fetch the event
-      if ((questionId || eventId) && !eventSlug) {
-        const eventIdToUse = questionId || eventId;
+      // Step 2: If we found question_id but no slug, query database for parent event
+      // The question_id is the parent event identifier shared by all child markets
+      // Query our database to find the parent market (which has the same question_id but different slug pattern)
+      if (questionId && !eventSlug) {
+        try {
+          // Query database for markets with the same question_id
+          // Parent events typically don't have "will-" or "-win-" in their slug
+          const parentResult = await query(
+            `SELECT id, slug, question FROM markets 
+             WHERE question_id = $1 
+               AND slug NOT LIKE 'will-%'
+               AND slug NOT LIKE '%-win-%'
+             ORDER BY created_at ASC 
+             LIMIT 1`,
+            [questionId]
+          );
+          
+          if (parentResult.rows.length > 0) {
+            const foundSlug = parentResult.rows[0].slug;
+            if (foundSlug) {
+              eventSlug = foundSlug;
+              console.log(`[Alert Dispatcher] Found parent event slug via question_id: ${eventSlug} for market ${marketId}`);
+              await redis.setex(cacheKey, 86400, eventSlug);
+              return eventSlug;
+            }
+          } else {
+            // If no parent found, the current market might be the parent
+            // Check if current market's question_id matches its own ID (meaning it's a parent)
+            // Or try to find any market with this question_id (might be another child)
+            const anyMarketResult = await query(
+              `SELECT slug FROM markets 
+               WHERE question_id = $1 
+               ORDER BY 
+                 CASE WHEN slug NOT LIKE 'will-%' AND slug NOT LIKE '%-win-%' THEN 0 ELSE 1 END,
+                 created_at ASC 
+               LIMIT 1`,
+              [questionId]
+            );
+            
+            if (anyMarketResult.rows.length > 0) {
+              const foundSlug = anyMarketResult.rows[0].slug;
+              // Only use if it's not the same as stored slug (which is likely outcome-specific)
+              if (foundSlug && foundSlug !== storedSlug) {
+                eventSlug = foundSlug;
+                console.log(`[Alert Dispatcher] Found market slug via question_id: ${eventSlug} for market ${marketId}`);
+                await redis.setex(cacheKey, 86400, eventSlug);
+                return eventSlug;
+              }
+            }
+          }
+          
+          console.log(`[Alert Dispatcher] Found question_id ${questionId} but no parent event in database. Will try pattern matching.`);
+        } catch (error) {
+          console.error(`[Alert Dispatcher] Error querying database for question_id ${questionId}:`, error);
+          // Continue to pattern matching fallback
+        }
+      }
+
+      // Step 2b: If we found event_id but no slug, try to fetch the event directly
+      if (eventId && !eventSlug) {
         const eventEndpoints = [
-          `https://gamma-api.polymarket.com/events/${eventIdToUse}`,
-          `https://api.polymarket.com/v2/events/${eventIdToUse}`,
+          `https://gamma-api.polymarket.com/events/${eventId}`,
+          `https://api.polymarket.com/v2/events/${eventId}`,
         ];
 
         for (const endpoint of eventEndpoints) {
@@ -376,6 +457,7 @@ export class AlertDispatcher {
                        (data.event && (data.event.market_slug || data.event.slug));
 
             if (eventSlug) {
+              console.log(`[Alert Dispatcher] Found event slug via event_id: ${eventSlug}`);
               break;
             }
           } catch (error) {

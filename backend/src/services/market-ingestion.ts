@@ -306,12 +306,17 @@ export class MarketIngestionService {
 
   /**
    * Handle trade events from WebSocket
+   * 
+   * IMPORTANT: Each outcome has its own token_id/assetId, so trades are stored per outcome.
+   * For bucket markets (e.g., GDP growth with buckets like "<0.5%", "0.5-1.0%"), each bucket
+   * is a separate outcome with its own token_id, and therefore has its own trade history.
    */
   public async handleTradeEvent(event: PolymarketTradeEvent): Promise<void> {
     try {
       const { assetId, price, size, timestamp, side } = event;
       
       // Find the outcome by token_id (assetId)
+      // Each outcome has a unique token_id, so this maps to exactly one outcome
       const outcomeResult = await query(
         'SELECT id, market_id, token_id FROM outcomes WHERE token_id = $1',
         [assetId]
@@ -327,8 +332,9 @@ export class MarketIngestionService {
       const marketId = outcome.market_id;
       
       // Store trade in Redis sliding window (last 100 trades, 24 hour TTL)
+      // Key is per token_id (which is per outcome), so each outcome has its own trade history
       await RedisSlidingWindow.add(
-        `trades:${assetId}`,
+        `trades:${assetId}`, // assetId is the token_id, unique per outcome
         {
           price,
           size,
@@ -365,6 +371,10 @@ export class MarketIngestionService {
 
   /**
    * Handle orderbook events from WebSocket
+   * 
+   * IMPORTANT: Each outcome has its own token_id/assetId, so orderbook is stored per outcome.
+   * For bucket markets (e.g., GDP growth with buckets like "<0.5%", "0.5-1.0%"), each bucket
+   * is a separate outcome with its own token_id, and therefore has its own orderbook.
    */
   public async handleOrderbookEvent(event: PolymarketOrderbookEvent): Promise<void> {
     try {
@@ -376,6 +386,7 @@ export class MarketIngestionService {
       }
       
       // Find the outcome by token_id (assetId)
+      // Each outcome has a unique token_id, so this maps to exactly one outcome
       const outcomeResult = await query(
         'SELECT id, market_id, token_id FROM outcomes WHERE token_id = $1',
         [assetId]
@@ -389,12 +400,13 @@ export class MarketIngestionService {
       const outcome = outcomeResult.rows[0];
       const marketId = outcome.market_id;
       
-      // Calculate orderbook metrics
+      // Calculate orderbook metrics for this specific outcome
       const metrics = this.calculateOrderbookMetrics(bids, asks);
       
       // Store orderbook metrics in Redis sliding window (60 minutes, max 3600 data points)
+      // Key is per token_id (which is per outcome), so each outcome has its own orderbook
       await RedisSlidingWindow.add(
-        `orderbook:${assetId}`,
+        `orderbook:${assetId}`, // assetId is the token_id, unique per outcome
         {
           ...metrics,
           timestamp,

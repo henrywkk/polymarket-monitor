@@ -1,5 +1,5 @@
 import { MarketIngestionService } from './market-ingestion';
-import { PolymarketRestClient, PolymarketMarket, TAG_IDS } from './polymarket-rest';
+import { PolymarketRestClient, PolymarketMarket } from './polymarket-rest';
 import { Market, Outcome } from '../models/Market';
 import { query } from '../config/database';
 
@@ -90,173 +90,85 @@ export class MarketSyncService {
 
   /**
    * Sync markets from Polymarket API to database
-   * Fetches markets by tag_id to ensure we get diverse categories
+   * Uses pagination to fetch all active markets (no tag filtering)
    */
-  async syncMarkets(limit: number = 100): Promise<number> {
+  async syncMarkets(limit: number = 2000): Promise<number> {
     try {
-      console.log(`Starting market sync, fetching up to ${limit} markets...`);
+      const pageSize = 100; // Markets per API call
+      const maxMarkets = limit;
       
-      // First, try to fetch tags to verify tag IDs
-      const tags = await this.restClient.fetchTags();
-      let cryptoTagId: string | undefined = TAG_IDS.CRYPTO;
-      let politicsTagId: string | undefined = TAG_IDS.POLITICS;
-      let sportsTagId: string | undefined = TAG_IDS.SPORTS;
-      
-      if (tags.length > 0) {
-        // Search for Crypto tag
-        const cryptoTag = tags.find(t => {
-          const label = (t.label || '').toLowerCase();
-          const slug = (t.slug || '').toLowerCase();
-          return label === 'crypto' || slug === 'crypto';
-        }) || tags.find(t => {
-          const label = (t.label || '').toLowerCase();
-          const slug = (t.slug || '').toLowerCase();
-          return label.includes('crypto') || slug.includes('crypto');
-        });
-        if (cryptoTag) {
-          cryptoTagId = String(cryptoTag.id);
-        }
-        
-        // Search for Politics tag
-        const politicsTag = tags.find(t => {
-          const label = (t.label || '').toLowerCase();
-          const slug = (t.slug || '').toLowerCase();
-          return label === 'politics' || slug === 'politics';
-        }) || tags.find(t => {
-          const label = (t.label || '').toLowerCase();
-          const slug = (t.slug || '').toLowerCase();
-          return label.includes('politic') || slug.includes('politic') ||
-                 label.includes('election') || slug.includes('election');
-        });
-        if (politicsTag) {
-          politicsTagId = String(politicsTag.id);
-        }
-        
-        // Search for Sports tag
-        const sportsTag = tags.find(t => {
-          const label = (t.label || '').toLowerCase();
-          const slug = (t.slug || '').toLowerCase();
-          return label === 'sports' || slug === 'sports';
-        }) || tags.find(t => {
-          const label = (t.label || '').toLowerCase();
-          const slug = (t.slug || '').toLowerCase();
-          return label.includes('sport') || slug.includes('sport');
-        });
-        if (sportsTag) {
-          sportsTagId = String(sportsTag.id);
-        }
-      }
-      
-      // Fetch markets from different categories using tag_slug (more reliable than tag_id)
-      // For Crypto, also fetch from sub-tags to get all crypto-related markets
-      const cryptoSubTags = ['bitcoin', 'ethereum', 'solana', 'xrp', 'dogecoin', 'microstrategy'];
-      
-      const categoryConfigs = [
-        // Crypto: fetch from main tag + sub-tags
-        { tagSlug: 'crypto', tagId: cryptoTagId, category: 'Crypto', subTags: cryptoSubTags },
-        { tagSlug: 'politics', tagId: politicsTagId, category: 'Politics', subTags: [] },
-        { tagSlug: 'sports', tagId: sportsTagId, category: 'Sports', subTags: [] },
-        { tagSlug: undefined, tagId: undefined, category: 'All', subTags: [] }, // Fetch all markets
-      ];
-      
-      // Calculate markets per category (accounting for sub-tags)
-      const baseCategories = categoryConfigs.filter(c => c.category !== 'All').length;
-      const cryptoSubTagCount = cryptoSubTags.length;
-      const totalFetchOperations = baseCategories + cryptoSubTagCount + 1; // +1 for "All"
-      const marketsPerOperation = Math.ceil(limit / totalFetchOperations);
+      console.log(`Starting market sync with pagination (max: ${maxMarkets}, page size: ${pageSize})...`);
       
       let allMarkets: PolymarketMarket[] = [];
       const seenIds = new Set<string>();
-      const fetchSummary: Record<string, number> = {};
-
-      for (const { tagSlug, tagId, category, subTags } of categoryConfigs) {
-        // Fetch from main tag
+      let offset = 0;
+      let totalFetched = 0;
+      let consecutiveEmptyPages = 0;
+      const maxEmptyPages = 3; // Stop if we get 3 empty pages in a row
+      
+      // Fetch markets using pagination (no tag filtering)
+      while (allMarkets.length < maxMarkets) {
         try {
-          const categoryMarkets = await this.restClient.fetchMarkets({ 
-            limit: marketsPerOperation,
-            tagSlug,
-            tagId: tagSlug ? undefined : tagId,
+          const pageMarkets = await this.restClient.fetchMarkets({
+            limit: pageSize,
+            offset: offset,
             active: true,
             closed: false,
+            // No tagSlug or tagId - fetch all active markets
           });
           
+          if (pageMarkets.length === 0) {
+            consecutiveEmptyPages++;
+            if (consecutiveEmptyPages >= maxEmptyPages) {
+              console.log(`No more markets found after ${offset} markets. Stopping pagination.`);
+              break;
+            }
+            // Still increment offset in case there's a gap
+            offset += pageSize;
+            continue;
+          }
+          
+          consecutiveEmptyPages = 0; // Reset counter on successful fetch
+          
           // Deduplicate and categorize markets
-          for (const market of categoryMarkets) {
+          for (const market of pageMarkets) {
             const marketId = market.conditionId || market.questionId || market.id;
             if (marketId && !seenIds.has(marketId)) {
               seenIds.add(marketId);
-              market.category = category;
+              // Detect category from market data (tags, question, etc.)
+              market.category = this.detectCategory(market);
               allMarkets.push(market);
             }
           }
           
-          const tagKey = tagSlug || tagId || 'all';
-          fetchSummary[`${category}:${tagKey}`] = categoryMarkets.length;
+          totalFetched += pageMarkets.length;
+          offset += pageSize;
+          
+          // Log progress every 500 markets
+          if (allMarkets.length % 500 === 0 || allMarkets.length >= maxMarkets) {
+            console.log(`[Sync Progress] Fetched ${allMarkets.length}/${maxMarkets} unique markets (offset: ${offset})`);
+          }
+          
+          // If we got fewer markets than page size, we've reached the end
+          if (pageMarkets.length < pageSize) {
+            console.log(`Reached end of markets (got ${pageMarkets.length} < ${pageSize})`);
+            break;
+          }
+          
         } catch (error) {
-          console.warn(`Error fetching ${category} markets:`, error instanceof Error ? error.message : String(error));
-        }
-        
-        // For Crypto, also fetch from sub-tags
-        if (category === 'Crypto' && subTags.length > 0) {
-          const subTagCounts: Record<string, number> = {};
-          for (const subTag of subTags) {
-            try {
-              const subTagMarkets = await this.restClient.fetchMarkets({
-                limit: marketsPerOperation,
-                tagSlug: subTag,
-                active: true,
-                closed: false,
-              });
-              
-              // Deduplicate and categorize as Crypto
-              for (const market of subTagMarkets) {
-                const marketId = market.conditionId || market.questionId || market.id;
-                if (marketId && !seenIds.has(marketId)) {
-                  seenIds.add(marketId);
-                  market.category = 'Crypto';
-                  allMarkets.push(market);
-                }
-              }
-              
-              subTagCounts[subTag] = subTagMarkets.length;
-            } catch (error) {
-              // Only log errors, not individual fetches
-            }
-          }
-          if (Object.keys(subTagCounts).length > 0) {
-            fetchSummary[`Crypto:sub-tags`] = Object.values(subTagCounts).reduce((a, b) => a + b, 0);
+          console.error(`Error fetching markets at offset ${offset}:`, error instanceof Error ? error.message : String(error));
+          // Continue to next page on error
+          offset += pageSize;
+          consecutiveEmptyPages++;
+          if (consecutiveEmptyPages >= maxEmptyPages) {
+            console.log(`Too many consecutive errors. Stopping pagination.`);
+            break;
           }
         }
       }
       
-      // Log summary of all fetches in one line
-      const summaryStr = Object.entries(fetchSummary).map(([key, count]) => `${key}=${count}`).join(', ');
-      console.log(`Market fetch summary: ${summaryStr}`);
-      
-      const cryptoMarketsCount = allMarkets.filter(m => m.category === 'Crypto').length;
-      if (cryptoMarketsCount > 0) {
-        console.log(`Total unique Crypto markets: ${cryptoMarketsCount}`);
-      }
+      console.log(`[Sync] Fetched ${totalFetched} total markets, ${allMarkets.length} unique markets after deduplication`);
 
-      // If we still don't have enough markets, fetch more without tag filter
-      // But only if we haven't exceeded the limit significantly
-      if (allMarkets.length < limit && allMarkets.length < limit * 1.2) {
-        const additionalMarkets = await this.restClient.fetchMarkets({ 
-          limit: limit - allMarkets.length,
-          active: true,
-          closed: false,
-        });
-        
-        for (const market of additionalMarkets) {
-          const marketId = market.conditionId || market.questionId || market.id;
-          if (marketId && !seenIds.has(marketId)) {
-            seenIds.add(marketId);
-            market.category = this.detectCategory(market);
-            allMarkets.push(market);
-          }
-        }
-      }
-      
       if (allMarkets.length === 0) {
         console.log('No markets fetched from Polymarket API');
         return 0;
@@ -277,7 +189,7 @@ export class MarketSyncService {
         return acc;
       }, {} as Record<string, number>);
       
-      console.log(`Categorized markets:`, categoryCounts);
+      console.log(`[Sync] Market categories:`, categoryCounts);
 
       let synced = 0;
       let skipped = 0;

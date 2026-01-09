@@ -113,8 +113,8 @@ const startServer = async () => {
         });
 
         // Sync markets from Polymarket API (non-blocking)
-    // Fetch more markets to ensure we get diverse categories including crypto
-    marketSync.syncMarkets(500).catch((error: unknown) => {
+    // Fetch up to 2000 markets with pagination (no tag filtering - discovers all active markets)
+    marketSync.syncMarkets(2000).catch((error: unknown) => {
       console.error('Error during initial market sync:', error);
     });
 

@@ -75,7 +75,8 @@ export class PeriodicSyncService {
       console.log(`[Periodic Sync] Starting market sync at ${new Date().toISOString()}`);
       
       // Use smart sync that only updates changed markets
-      const synced = await this.syncService.syncMarkets(500);
+      // Fetch up to 2000 markets with pagination (no tag filtering)
+      const synced = await this.syncService.syncMarkets(2000);
       
       const duration = Date.now() - startTime;
       this.stats.lastSyncTime = new Date();

@@ -271,12 +271,18 @@ export class PolymarketRestClient {
             return normalizedMarkets;
           }
             } catch (error) {
-              // Only log non-404 errors
-              if (axios.isAxiosError(error) && error.response?.status !== 404) {
-                // Silently skip 404s and other common errors
-                continue;
+              // Log error details for debugging (but don't spam)
+              if (axios.isAxiosError(error)) {
+                const status = error.response?.status;
+                // Only log non-404 errors (404s are expected for some endpoints)
+                if (status && status !== 404) {
+                  // Log at debug level to avoid spam, but include details
+                  if (process.env.NODE_ENV === 'development' || process.env.DEBUG_API === 'true') {
+                    console.debug(`[API] Endpoint ${base}${path} failed: ${status} - ${error.message}`);
+                  }
+                }
               }
-              continue;
+              continue; // Try next endpoint
             }
       }
 

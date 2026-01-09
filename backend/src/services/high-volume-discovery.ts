@@ -100,14 +100,53 @@ export class HighVolumeDiscoveryService {
       console.log(`[High-Volume Discovery] Fetching top ${limit} markets by ${sortBy}...`);
       
       // Try to fetch markets sorted by volume
-      const markets = await this.restClient.fetchMarkets({
-        limit,
-        offset: 0,
-        active: true,
-        closed: false,
-        sortBy: sortBy === 'volume24hr' ? 'volume24hr' : 'volume',
-        order,
-      });
+      // Note: Some Polymarket endpoints may not support sortBy parameter
+      // If that fails, we'll fetch without sorting and sort/filter client-side
+      let markets: PolymarketMarket[] = [];
+      
+      try {
+        markets = await this.restClient.fetchMarkets({
+          limit: Math.min(limit * 2, 500), // Fetch more to account for filtering
+          offset: 0,
+          active: true,
+          closed: false,
+          sortBy: sortBy === 'volume24hr' ? 'volume24hr' : 'volume',
+          order,
+        });
+      } catch (error) {
+        // If sorting fails, try without sortBy parameter
+        console.warn(`[High-Volume Discovery] Failed to fetch with sortBy, trying without sorting...`);
+        markets = await this.restClient.fetchMarkets({
+          limit: Math.min(limit * 5, 1000), // Fetch even more to find high-volume markets
+          offset: 0,
+          active: true,
+          closed: false,
+          // No sortBy - will sort client-side
+        });
+      }
+
+      if (markets.length === 0) {
+        console.warn(`[High-Volume Discovery] No markets fetched for ${sortBy} sort`);
+        return [];
+      }
+
+      // Sort client-side if needed (in case API didn't sort)
+      if (sortBy === 'volume24hr') {
+        markets.sort((a, b) => {
+          const volA = parseFloat(a.volume24h || '0');
+          const volB = parseFloat(b.volume24h || '0');
+          return order === 'desc' ? volB - volA : volA - volB;
+        });
+      } else {
+        markets.sort((a, b) => {
+          const volA = parseFloat(a.volume || '0');
+          const volB = parseFloat(b.volume || '0');
+          return order === 'desc' ? volB - volA : volA - volB;
+        });
+      }
+
+      // Take top N markets
+      markets = markets.slice(0, limit);
 
       // Filter for high-volume markets
       const highVolumeMarkets = markets.filter(m => {

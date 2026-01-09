@@ -15,10 +15,116 @@ export class MarketIngestionService {
   private PERSIST_INTERVAL_MS = 60000; // Persist at most once per minute per outcome
   private PRICE_CHANGE_THRESHOLD = 0.01; // OR if price changes by more than 1%
 
-  constructor(wsClient: PolymarketWebSocketClient, wsServer?: WebSocketServer) {
+  constructor(wsClient: PolymarketWebSocketClient, restClient: PolymarketRestClient, wsServer?: WebSocketServer) {
     this.wsClient = wsClient;
+    this.restClient = restClient;
     this.wsServer = wsServer;
     this.setupEventHandlers();
+    this.startOrderbookRefresh();
+  }
+
+  /**
+   * Start periodic orderbook refresh from REST API
+   * Refreshes every 60 seconds to ensure we have accurate orderbook state
+   */
+  private startOrderbookRefresh(): void {
+    // Refresh orderbooks every 60 seconds
+    this.orderbookRefreshInterval = setInterval(async () => {
+      await this.refreshOrderbooksForActiveMarkets();
+    }, 60000); // 60 seconds
+  }
+
+  /**
+   * Refresh orderbooks for all active markets from REST API
+   */
+  private async refreshOrderbooksForActiveMarkets(): Promise<void> {
+    try {
+      // Get all token_ids from active markets
+      const result = await query(
+        'SELECT DISTINCT token_id FROM outcomes WHERE token_id IS NOT NULL AND token_id != \'\' LIMIT 500'
+      );
+      
+      if (result.rows.length === 0) return;
+      
+      const tokenIds = result.rows.map(row => row.token_id);
+      console.log(`[Orderbook Refresh] Fetching orderbooks for ${tokenIds.length} tokens from REST API...`);
+      
+      // Fetch orderbooks in batches
+      const orderbooks = await this.restClient.fetchOrderBooks(tokenIds);
+      
+      // Process each orderbook
+      for (const [tokenId, orderbook] of orderbooks.entries()) {
+        await this.processOrderbookFromRest(tokenId, orderbook);
+      }
+      
+      console.log(`[Orderbook Refresh] Successfully refreshed ${orderbooks.size} orderbooks`);
+    } catch (error) {
+      console.error('[Orderbook Refresh] Error refreshing orderbooks:', error);
+    }
+  }
+
+  /**
+   * Process orderbook data from REST API
+   */
+  private async processOrderbookFromRest(
+    tokenId: string,
+    orderbook: {
+      bids: Array<{ price: string; size: string }>;
+      asks: Array<{ price: string; size: string }>;
+      timestamp: string;
+    }
+  ): Promise<void> {
+    try {
+      // Convert string prices/sizes to numbers
+      const bids = orderbook.bids.map(b => ({
+        price: parseFloat(b.price),
+        size: parseFloat(b.size),
+      }));
+      const asks = orderbook.asks.map(a => ({
+        price: parseFloat(a.price),
+        size: parseFloat(a.size),
+      }));
+      
+      if (bids.length === 0 || asks.length === 0) {
+        return;
+      }
+      
+      // Find the outcome by token_id
+      const outcomeResult = await query(
+        'SELECT id, market_id, token_id FROM outcomes WHERE token_id = $1',
+        [tokenId]
+      );
+      
+      if (outcomeResult.rows.length === 0) {
+        return;
+      }
+      
+      const outcome = outcomeResult.rows[0];
+      const marketId = outcome.market_id;
+      
+      // Calculate orderbook metrics
+      const metrics = this.calculateOrderbookMetrics(bids, asks);
+      
+      // Validate metrics
+      if (metrics.spreadPercent > 50 || metrics.bestBid <= 0 || metrics.bestAsk <= 0 || metrics.bestBid >= 1 || metrics.bestAsk >= 1) {
+        return;
+      }
+      
+      // Store in Redis
+      await RedisSlidingWindow.add(
+        `orderbook:${tokenId}`,
+        {
+          ...metrics,
+          timestamp: Date.now(),
+          marketId,
+          outcomeId: outcome.id,
+        },
+        3600000, // 60 minutes
+        3600 // Max 3600 data points
+      );
+    } catch (error) {
+      console.error(`Error processing orderbook from REST for token ${tokenId}:`, error);
+    }
   }
 
   private setupEventHandlers(): void {
@@ -615,6 +721,7 @@ export class MarketIngestionService {
 
   /**
    * Subscribe to multiple markets at once (batch subscription)
+   * Also fetches initial orderbook state from REST API
    */
   async subscribeToMarkets(marketIds: string[]): Promise<void> {
     try {
@@ -626,7 +733,18 @@ export class MarketIngestionService {
 
       if (result.rows.length > 0) {
         const assetIds = result.rows.map(row => row.token_id);
-        // Batch subscribe to all asset_ids at once
+        
+        // Fetch initial orderbook state from REST API before subscribing to WebSocket
+        console.log(`[Subscription] Fetching initial orderbook state for ${assetIds.length} tokens from REST API...`);
+        const orderbooks = await this.restClient.fetchOrderBooks(assetIds);
+        
+        // Process each orderbook
+        for (const [tokenId, orderbook] of orderbooks.entries()) {
+          await this.processOrderbookFromRest(tokenId, orderbook);
+        }
+        console.log(`[Subscription] Loaded ${orderbooks.size} initial orderbooks from REST API`);
+        
+        // Batch subscribe to all asset_ids at once for WebSocket updates
         console.log(`[Subscription] Found ${assetIds.length} asset_ids for ${marketIds.length} markets`);
         console.log(`[Subscription] Sample asset_ids:`, assetIds.slice(0, 5));
         this.wsClient.subscribeToAssets(assetIds);

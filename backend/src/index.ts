@@ -82,7 +82,8 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
     // Reference: https://docs.polymarket.com/developers/CLOB/websocket/market-channel
     const wsUrl = process.env.POLYMARKET_WS_URL;
     const wsClient = new PolymarketWebSocketClient(wsUrl); // Defaults to official URL if not provided
-    const marketIngestion = new MarketIngestionService(wsClient, wsServer);
+    const restClient = new PolymarketRestClient();
+    const marketIngestion = new MarketIngestionService(wsClient, restClient, wsServer);
 
 // Initialize Polymarket REST client and sync service
 const restClient = new PolymarketRestClient();

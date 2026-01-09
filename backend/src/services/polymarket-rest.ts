@@ -313,6 +313,76 @@ export class PolymarketRestClient {
   }
 
   /**
+   * Fetch orderbook for a specific token ID from CLOB REST API
+   * API: GET /book?token_id={token_id}
+   * Returns full orderbook with bids and asks
+   */
+  async fetchOrderBook(tokenId: string): Promise<{
+    market: string;
+    asset_id: string;
+    timestamp: string;
+    bids: Array<{ price: string; size: string }>;
+    asks: Array<{ price: string; size: string }>;
+    min_order_size: string;
+    tick_size: string;
+    neg_risk: boolean;
+    hash: string;
+  } | null> {
+    try {
+      const response = await axios.get(`${POLYMARKET_API_BASE}/book`, {
+        params: { token_id: tokenId },
+        timeout: 10000,
+      });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        // Token not found, return null
+        return null;
+      }
+      console.error(`Error fetching orderbook for token ${tokenId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch orderbooks for multiple token IDs
+   * API: POST /book (with array of token_ids)
+   */
+  async fetchOrderBooks(tokenIds: string[]): Promise<Map<string, {
+    market: string;
+    asset_id: string;
+    timestamp: string;
+    bids: Array<{ price: string; size: string }>;
+    asks: Array<{ price: string; size: string }>;
+    min_order_size: string;
+    tick_size: string;
+    neg_risk: boolean;
+    hash: string;
+  }>> {
+    const result = new Map();
+    
+    // Fetch orderbooks in parallel (batch of 10 at a time to avoid rate limits)
+    const batchSize = 10;
+    for (let i = 0; i < tokenIds.length; i += batchSize) {
+      const batch = tokenIds.slice(i, i + batchSize);
+      const promises = batch.map(async (tokenId) => {
+        const orderbook = await this.fetchOrderBook(tokenId);
+        if (orderbook) {
+          result.set(tokenId, orderbook);
+        }
+      });
+      await Promise.all(promises);
+      
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < tokenIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    return result;
+  }
+
+  /**
    * Fetch market order book from CLOB API to get token_ids (asset_ids)
    * CLOB API: GET /book?token_id={token_id}
    * We can also get market info from: GET /markets/{condition_id}

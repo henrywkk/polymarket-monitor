@@ -399,8 +399,8 @@ export class AlertDispatcher {
             if (foundSlug) {
               eventSlug = foundSlug;
               console.log(`[Alert Dispatcher] Found parent event slug via question_id: ${eventSlug} for market ${marketId}`);
-              await redis.setex(cacheKey, 86400, eventSlug);
-              return eventSlug;
+              await redis.setex(cacheKey, 86400, foundSlug);
+              return foundSlug;
             }
           } else {
             // If no parent found, the current market might be the parent
@@ -422,8 +422,8 @@ export class AlertDispatcher {
               if (foundSlug && foundSlug !== storedSlug) {
                 eventSlug = foundSlug;
                 console.log(`[Alert Dispatcher] Found market slug via question_id: ${eventSlug} for market ${marketId}`);
-                await redis.setex(cacheKey, 86400, eventSlug);
-                return eventSlug;
+                await redis.setex(cacheKey, 86400, foundSlug);
+                return foundSlug;
               }
             }
           }

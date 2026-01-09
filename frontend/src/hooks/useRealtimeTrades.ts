@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { wsService } from '../services/websocket';
-import { Trade } from '../services/api';
 
 export interface TradeUpdate {
   marketId: string;

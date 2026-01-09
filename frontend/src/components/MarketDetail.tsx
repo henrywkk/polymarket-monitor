@@ -3,7 +3,7 @@ import { ArrowLeft, Clock, TrendingUp, ExternalLink, BarChart3, PieChart, Activi
 import { useMarketDetail } from '../hooks/useMarketDetail';
 import { useRealtimePrice } from '../hooks/useRealtimePrice';
 import { useRealtimeTrades } from '../hooks/useRealtimeTrades';
-import { tradesApi, Trade } from '../services/api';
+import { tradesApi } from '../services/api';
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 

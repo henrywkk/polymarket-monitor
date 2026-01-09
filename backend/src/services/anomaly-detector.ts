@@ -236,14 +236,15 @@ export class AnomalyDetector {
       }
 
       // Check if volume is >3σ above average
-      if (zScore > this.VOLUME_ACCELERATION_SIGMA) {
+      // Also ensure zScore is meaningful (not 0 or negative, and currentVolume is significant)
+      if (zScore > this.VOLUME_ACCELERATION_SIGMA && zScore > 0.1 && currentVolume > 100) {
         return {
           type: 'volume_acceleration',
           marketId,
           outcomeId,
           tokenId,
           severity: 'medium',
-          message: `Volume spike detected: ${currentVolume.toFixed(2)} (${zScore.toFixed(2)}σ above average)`,
+          message: `Volume spike detected: $${currentVolume.toLocaleString()} (${zScore.toFixed(2)}σ above average)`,
           data: {
             currentVolume,
             averageVolume: mean,

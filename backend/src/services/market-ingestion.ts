@@ -543,16 +543,9 @@ export class MarketIngestionService {
           if (insiderMoveAlert) {
             await this.anomalyDetector.storeAlert(insiderMoveAlert);
           }
-        } else {
-          // Store price velocity alert separately if volume is low
-          // This helps debug why insider move wasn't triggered
-          await this.anomalyDetector.storeAlert({
-            ...priceVelocityAlert,
-            type: 'volume_acceleration', // Change type since volume check failed
-            severity: 'low',
-            message: `Price velocity detected but volume too low: ${priceVelocityAlert.message} (Volume: $${recentVolume.toFixed(2)})`,
-          });
         }
+        // Note: We don't store price velocity alerts separately if volume is too low
+        // This prevents meaningless alerts. Price velocity alone without volume is not actionable.
       }
 
       // Update last_trade_at and recalculate activity_score for the market

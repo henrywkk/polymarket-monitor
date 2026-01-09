@@ -284,8 +284,17 @@ export class AlertDispatcher {
       case 'volume_acceleration':
         const volZScore = alert.data.zScore || 0;
         const currentVolume = alert.data.currentVolume || 0;
-        baseFormatted.title = '📈 VOLUME ACCELERATION Detected';
-        baseFormatted.message = `Volume spike: ${volZScore.toFixed(2)}σ above average (current: $${currentVolume.toLocaleString()})`;
+        const avgVolume = alert.data.averageVolume || 0;
+        
+        // Only show meaningful alerts
+        if (volZScore < 0.1 || currentVolume < 100) {
+          // Skip formatting for meaningless alerts (shouldn't happen due to validation, but just in case)
+          baseFormatted.title = '📈 VOLUME ACCELERATION Detected';
+          baseFormatted.message = `Volume activity detected (filtered - not significant)`;
+        } else {
+          baseFormatted.title = '📈 VOLUME ACCELERATION Detected';
+          baseFormatted.message = `Volume spike: ${volZScore.toFixed(2)}σ above average | Current: $${currentVolume.toLocaleString()} | Average: $${avgVolume.toLocaleString()}`;
+        }
         baseFormatted.metrics = {
           volumeZScore: volZScore,
         };

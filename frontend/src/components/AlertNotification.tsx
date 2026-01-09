@@ -59,7 +59,11 @@ export const AlertNotification = ({
   useEffect(() => {
     alerts.forEach(alert => {
       if (!visibleAlerts.has(alert.timestamp)) {
-        setVisibleAlerts(prev => new Set([...prev, alert.timestamp]));
+        setVisibleAlerts(prev => {
+          const next = new Set(prev);
+          next.add(alert.timestamp);
+          return next;
+        });
 
         // Auto-dismiss after specified time
         if (autoDismiss > 0) {
@@ -73,7 +77,7 @@ export const AlertNotification = ({
         }
       }
     });
-  }, [alerts, visibleAlerts, autoDismiss]);
+  }, [alerts, autoDismiss]); // Removed visibleAlerts from dependencies to avoid infinite loop
 
   // Get visible alerts (newest first)
   const displayAlerts = alerts

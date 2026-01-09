@@ -5,6 +5,79 @@ import { RedisSlidingWindow } from '../services/redis-storage';
 const router = Router();
 
 /**
+ * GET /api/trades/whales
+ * Get all whale trades (>= $10,000) across all markets
+ * Optional query params: minSize (default 10000), limit (default 100)
+ * 
+ * IMPORTANT: This route must be defined BEFORE /:marketId to avoid route conflicts
+ */
+router.get('/whales', async (req: Request, res: Response) => {
+  try {
+    const { minSize = '10000', limit = '100' } = req.query;
+    const minSizeNum = parseFloat(String(minSize));
+    const limitNum = parseInt(String(limit), 10);
+    
+    // Get all outcome token IDs
+    const outcomes = await query(
+      'SELECT id, market_id, token_id, outcome FROM outcomes WHERE token_id IS NOT NULL AND token_id != \'\''
+    );
+    
+    if (outcomes.rows.length === 0) {
+      return res.json({ 
+        data: [],
+        message: 'No outcomes found'
+      });
+    }
+    
+    // Get all trades from Redis and filter for whale trades
+    const allWhaleTrades: any[] = [];
+    
+    for (const outcome of outcomes.rows) {
+      const trades = await RedisSlidingWindow.getLatest(
+        `trades:${outcome.token_id}`,
+        1000 // Get all available trades
+      );
+      
+      // Filter for whale trades
+      const whaleTrades = trades
+        .filter(t => (t.size || 0) >= minSizeNum)
+        .map(t => ({
+          ...t,
+          tokenId: outcome.token_id,
+          outcomeId: outcome.id,
+          outcomeName: outcome.outcome,
+        }));
+      
+      allWhaleTrades.push(...whaleTrades);
+    }
+    
+    // Sort by size descending, then by timestamp descending
+    allWhaleTrades.sort((a, b) => {
+      const sizeDiff = (b.size || 0) - (a.size || 0);
+      if (sizeDiff !== 0) return sizeDiff;
+      return b.timestamp - a.timestamp;
+    });
+    
+    return res.json({
+      data: allWhaleTrades.slice(0, limitNum),
+      total: allWhaleTrades.length,
+      minSize: minSizeNum,
+      stats: {
+        totalWhaleTrades: allWhaleTrades.length,
+        largestTrade: allWhaleTrades.length > 0 ? Math.max(...allWhaleTrades.map(t => t.size || 0)) : 0,
+        totalVolume: allWhaleTrades.reduce((sum, t) => sum + (t.size || 0), 0),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching whale trades:', error);
+    return res.status(500).json({ 
+      error: 'Failed to fetch whale trades',
+      details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : String(error)) : undefined,
+    });
+  }
+});
+
+/**
  * GET /api/trades/:marketId
  * Get trade history for a market, grouped by outcome
  * Each outcome has its own orderbook and trades (identified by token_id/assetId)
@@ -308,77 +381,6 @@ router.get('/orderbook/:marketId/:outcomeId', async (req: Request, res: Response
     console.error('Error fetching orderbook metrics for outcome:', error);
     return res.status(500).json({ 
       error: 'Failed to fetch orderbook metrics',
-      details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : String(error)) : undefined,
-    });
-  }
-});
-
-/**
- * GET /api/trades/whales
- * Get all whale trades (>= $10,000) across all markets
- * Optional query params: minSize (default 10000), limit (default 100)
- */
-router.get('/whales', async (req: Request, res: Response) => {
-  try {
-    const { minSize = '10000', limit = '100' } = req.query;
-    const minSizeNum = parseFloat(String(minSize));
-    const limitNum = parseInt(String(limit), 10);
-    
-    // Get all outcome token IDs
-    const outcomes = await query(
-      'SELECT id, market_id, token_id, outcome FROM outcomes WHERE token_id IS NOT NULL AND token_id != \'\''
-    );
-    
-    if (outcomes.rows.length === 0) {
-      return res.json({ 
-        data: [],
-        message: 'No outcomes found'
-      });
-    }
-    
-    // Get all trades from Redis and filter for whale trades
-    const allWhaleTrades: any[] = [];
-    
-    for (const outcome of outcomes.rows) {
-      const trades = await RedisSlidingWindow.getLatest(
-        `trades:${outcome.token_id}`,
-        1000 // Get all available trades
-      );
-      
-      // Filter for whale trades
-      const whaleTrades = trades
-        .filter(t => (t.size || 0) >= minSizeNum)
-        .map(t => ({
-          ...t,
-          tokenId: outcome.token_id,
-          outcomeId: outcome.id,
-          outcomeName: outcome.outcome,
-        }));
-      
-      allWhaleTrades.push(...whaleTrades);
-    }
-    
-    // Sort by size descending, then by timestamp descending
-    allWhaleTrades.sort((a, b) => {
-      const sizeDiff = (b.size || 0) - (a.size || 0);
-      if (sizeDiff !== 0) return sizeDiff;
-      return b.timestamp - a.timestamp;
-    });
-    
-    return res.json({
-      data: allWhaleTrades.slice(0, limitNum),
-      total: allWhaleTrades.length,
-      minSize: minSizeNum,
-      stats: {
-        totalWhaleTrades: allWhaleTrades.length,
-        largestTrade: allWhaleTrades.length > 0 ? Math.max(...allWhaleTrades.map(t => t.size || 0)) : 0,
-        totalVolume: allWhaleTrades.reduce((sum, t) => sum + (t.size || 0), 0),
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching whale trades:', error);
-    return res.status(500).json({ 
-      error: 'Failed to fetch whale trades',
       details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : String(error)) : undefined,
     });
   }

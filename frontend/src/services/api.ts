@@ -211,3 +211,136 @@ export const categoriesApi = {
     return response.data;
   },
 };
+
+// Trade and Orderbook Interfaces
+export interface Trade {
+  price: number;
+  size: number;
+  timestamp: number;
+  side?: 'buy' | 'sell';
+  tokenId: string;
+  outcomeId: string;
+  outcomeName: string;
+  marketId: string;
+}
+
+export interface TradeHistoryResponse {
+  data: Trade[];
+  byOutcome: Record<string, Trade[]>;
+  stats: {
+    totalTrades: number;
+    oldestTrade: number | null;
+    newestTrade: number | null;
+    byOutcome: Record<string, any>;
+  };
+  outcomes: Array<{
+    outcomeId: string;
+    outcomeName: string;
+    tokenId: string;
+  }>;
+}
+
+export interface TradeStats {
+  outcomeId: string;
+  outcomeName: string;
+  tokenId: string;
+  tradeCount: number;
+  totalVolume: number;
+  avgPrice: number;
+  whaleTradeCount: number;
+  largestTrade: number;
+}
+
+export interface TradeStatsResponse {
+  stats: TradeStats[];
+  byOutcome: Record<string, TradeStats>;
+}
+
+export interface OrderbookMetrics {
+  spread: number;
+  spreadPercent: number;
+  depth2Percent: number;
+  bestBid: number;
+  bestAsk: number;
+  midPrice: number;
+  totalBidDepth: number;
+  totalAskDepth: number;
+  timestamp: number;
+  tokenId: string;
+  outcomeId: string;
+  outcomeName: string;
+  marketId: string;
+}
+
+export interface OrderbookResponse {
+  data: OrderbookMetrics[];
+  byOutcome: Record<string, OrderbookMetrics[]>;
+  latest: OrderbookMetrics | Record<string, OrderbookMetrics> | null;
+  outcomes: Array<{
+    outcomeId: string;
+    outcomeName: string;
+    tokenId: string;
+  }>;
+}
+
+export const tradesApi = {
+  getTradeHistory: async (
+    marketId: string,
+    limit?: number,
+    groupBy?: 'outcome'
+  ): Promise<TradeHistoryResponse> => {
+    const params: any = {};
+    if (limit) params.limit = limit;
+    if (groupBy) params.groupBy = groupBy;
+    const response = await apiClient.get<TradeHistoryResponse>(
+      `/trades/${marketId}`,
+      { params }
+    );
+    return response.data;
+  },
+
+  getTradeStats: async (marketId: string): Promise<TradeStatsResponse> => {
+    const response = await apiClient.get<TradeStatsResponse>(
+      `/trades/${marketId}/stats`
+    );
+    return response.data;
+  },
+
+  getOrderbook: async (
+    marketId: string,
+    limit?: number,
+    groupBy?: 'outcome'
+  ): Promise<OrderbookResponse> => {
+    const params: any = {};
+    if (limit) params.limit = limit;
+    if (groupBy) params.groupBy = groupBy;
+    const response = await apiClient.get<OrderbookResponse>(
+      `/trades/orderbook/${marketId}`,
+      { params }
+    );
+    return response.data;
+  },
+
+  getOrderbookForOutcome: async (
+    marketId: string,
+    outcomeId: string,
+    limit?: number
+  ): Promise<{
+    outcome: {
+      outcomeId: string;
+      outcomeName: string;
+      tokenId: string;
+    };
+    data: OrderbookMetrics[];
+    latest: OrderbookMetrics | null;
+    stats: any;
+  }> => {
+    const params: any = {};
+    if (limit) params.limit = limit;
+    const response = await apiClient.get(
+      `/trades/orderbook/${marketId}/${outcomeId}`,
+      { params }
+    );
+    return response.data;
+  },
+};

@@ -1,8 +1,11 @@
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Clock, TrendingUp, ExternalLink, BarChart3, PieChart } from 'lucide-react';
+import { ArrowLeft, Clock, TrendingUp, ExternalLink, BarChart3, PieChart, Activity } from 'lucide-react';
 import { useMarketDetail } from '../hooks/useMarketDetail';
 import { useRealtimePrice } from '../hooks/useRealtimePrice';
+import { useRealtimeTrades } from '../hooks/useRealtimeTrades';
+import { tradesApi, Trade } from '../services/api';
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   isBinaryMarket, 
   calculateExpectedValue, 
@@ -108,6 +111,33 @@ export const MarketDetail = () => {
   const expectedValue = market ? calculateExpectedValue(outcomes) : null;
   
   const priceUpdate = useRealtimePrice(id, primaryOutcome?.id);
+  
+  // Real-time trade updates
+  const realtimeTrades = useRealtimeTrades(id);
+  
+  // Fetch trade history from API
+  const { data: tradeHistory } = useQuery({
+    queryKey: ['tradeHistory', id],
+    queryFn: async () => {
+      if (!id) return null;
+      return await tradesApi.getTradeHistory(id, 50, 'outcome');
+    },
+    enabled: !!id,
+    staleTime: 30000, // 30 seconds
+    refetchInterval: 60000, // Refetch every minute
+  });
+  
+  // Fetch orderbook metrics
+  const { data: orderbookData } = useQuery({
+    queryKey: ['orderbook', id],
+    queryFn: async () => {
+      if (!id) return null;
+      return await tradesApi.getOrderbook(id, 1, 'outcome'); // Just get latest
+    },
+    enabled: !!id,
+    staleTime: 10000, // 10 seconds
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
 
   if (isLoading) {
     return (

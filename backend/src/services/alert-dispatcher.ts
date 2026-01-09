@@ -15,6 +15,7 @@ import { query } from '../config/database';
 import { AlertEvent } from './anomaly-detector';
 import { AlertThrottle } from './alert-throttle';
 import { NotificationChannel } from './notification-channels';
+import axios from 'axios';
 
 export interface FormattedAlert {
   title: string;
@@ -274,15 +275,90 @@ export class AlertDispatcher {
         }
       }
 
+      // Try to get the correct event slug from Polymarket API
+      // The stored slug might be outcome-specific, but we need the parent event slug
+      const correctSlug = await this.fetchCorrectEventSlug(marketId, market.slug);
+
       return {
         marketName: market.question,
         category: market.category,
-        slug: market.slug,
+        slug: correctSlug || market.slug,
         outcomeName,
       };
     } catch (error) {
       console.error(`[Alert Dispatcher] Error fetching market info for ${marketId}:`, error);
       return {};
+    }
+  }
+
+  /**
+   * Fetch the correct event slug from Polymarket API
+   * The stored slug might be outcome-specific, but we need the parent event slug
+   * Uses caching to avoid excessive API calls
+   */
+  private async fetchCorrectEventSlug(marketId: string, storedSlug?: string): Promise<string | undefined> {
+    try {
+      // Check cache first (24 hour TTL)
+      const cacheKey = `event_slug:${marketId}`;
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // Try to fetch from Polymarket Gamma API
+      // The event endpoint should return the parent event with the correct slug
+      const endpoints = [
+        `https://gamma-api.polymarket.com/events/${marketId}`,
+        `https://gamma-api.polymarket.com/markets/${marketId}`,
+        `https://api.polymarket.com/v2/events/${marketId}`,
+      ];
+
+      for (const endpoint of endpoints) {
+        try {
+          const response = await axios.get(endpoint, {
+            timeout: 3000, // Shorter timeout for alert processing
+            headers: {
+              'Accept': 'application/json',
+            },
+          });
+
+          const data = response.data;
+          
+          // Look for event slug in various possible fields
+          // Priority: event.slug > slug > eventSlug > market_slug
+          const eventSlug = data.event?.slug || 
+                           data.slug || 
+                           data.eventSlug ||
+                           data.market_slug ||
+                           (data.event && (data.event.market_slug || data.event.slug));
+
+          if (eventSlug) {
+            // Cache the correct slug for 24 hours
+            await redis.setex(cacheKey, 86400, eventSlug);
+            
+            // Only log if it's different from stored slug
+            if (eventSlug !== storedSlug) {
+              console.log(`[Alert Dispatcher] Found correct event slug for ${marketId}: ${eventSlug} (was: ${storedSlug || 'none'})`);
+            }
+            
+            return eventSlug;
+          }
+        } catch (error) {
+          // Try next endpoint silently
+          continue;
+        }
+      }
+
+      // If we couldn't fetch a better slug, use the stored one and cache it
+      if (storedSlug) {
+        await redis.setex(cacheKey, 86400, storedSlug);
+      }
+
+      return storedSlug;
+    } catch (error) {
+      // If API fetch fails, fall back to stored slug silently
+      // Don't log warnings for every failed fetch to avoid log spam
+      return storedSlug;
     }
   }
 

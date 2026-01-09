@@ -352,9 +352,11 @@ export class MarketIngestionService {
       
       console.log(`[Price Event] Handling price update for asset_id: ${outcomeId}, bid: ${price.bid}, ask: ${price.ask}`);
 
-      // Validate prices
+      // Validate prices (must be 0-1 range)
       if (!isValidPrice(price.bid) || !isValidPrice(price.ask)) {
-        console.warn(`Invalid price data for ${marketId}-${outcomeId}:`, price);
+        // Log at debug level since this can happen during initial price setup
+        // and is often corrected by subsequent price updates
+        console.log(`[Debug] Invalid price data for ${marketId}-${outcomeId}:`, price, '(prices must be 0-1 range)');
         return;
       }
 
@@ -385,10 +387,11 @@ export class MarketIngestionService {
             this.syncingAssetIds.delete(outcomeId);
           });
         } else if (!this.warnedAssetIds.has(outcomeId)) {
-          // Only warn once per asset_id to reduce log noise
-          console.warn(`Outcome not found for asset_id ${outcomeId} (likely from unsynced market)`);
+          // Only log once per asset_id to reduce log noise
+          // Changed to info level since auto-sync will handle it
+          console.log(`[Info] Outcome not found for asset_id ${outcomeId} (auto-sync will handle if market is active)`);
           this.warnedAssetIds.add(outcomeId);
-          // Clear warning after 1 hour to allow re-warning if issue persists
+          // Clear warning after 1 hour to allow re-logging if issue persists
           setTimeout(() => this.warnedAssetIds.delete(outcomeId), 3600000);
         }
         return;

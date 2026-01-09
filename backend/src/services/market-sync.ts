@@ -529,13 +529,17 @@ export class MarketSyncService {
 
         if (!isNaN(initialPrice)) {
           // We'll use the price as mid, and set tiny spread for initial data
+          // Ensure prices stay within 0-1 range
+          const bid = Math.max(0, Math.min(0.99, initialPrice * 0.99));
+          const ask = Math.max(bid + 0.001, Math.min(1.0, initialPrice * 1.01));
+          
           await this.ingestionService.handlePriceEvent({
             type: 'price_changed',
             market: marketId,
             outcome: outcomeId,
             price: {
-              bid: initialPrice * 0.99,
-              ask: initialPrice * 1.01
+              bid,
+              ask
             },
             timestamp: Date.now()
           });

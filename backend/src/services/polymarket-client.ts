@@ -11,6 +11,14 @@ export interface PolymarketPriceEvent {
   timestamp: number;
 }
 
+export interface PolymarketTradeEvent {
+  assetId: string;
+  price: number;
+  size: number; // Trade size in USDC
+  timestamp: number;
+  side?: 'buy' | 'sell'; // If available
+}
+
 export interface PolymarketSubscription {
   type: 'subscribe' | 'unsubscribe' | 'MARKET' | 'USER';
   assets_ids?: string[];
@@ -29,6 +37,7 @@ export class PolymarketWebSocketClient {
   private subscriptions = new Set<string>();
   private subscribedAssetIds = new Set<string>();
   private messageHandlers: Map<string, (data: PolymarketPriceEvent) => void> = new Map();
+  private tradeHandlers: Map<string, (data: PolymarketTradeEvent) => void> = new Map();
   private pingInterval: NodeJS.Timeout | null = null;
   private heartbeatInterval = 5000;
 
@@ -136,6 +145,11 @@ export class PolymarketWebSocketClient {
   private handleSingleMessage(msg: any): void {
     if (typeof msg !== 'object' || msg === null) return;
 
+    // Log full message structure for analysis (only in development, remove after analysis)
+    if (process.env.NODE_ENV === 'development' && process.env.DEBUG_WEBSOCKET === 'true') {
+      console.log('[WebSocket Debug] Full message:', JSON.stringify(msg, null, 2));
+    }
+
     // Polymarket CLOB WebSocket events
     // 1. Array of price_changes (most common for updates)
     if (Array.isArray(msg.price_changes)) {
@@ -146,8 +160,37 @@ export class PolymarketWebSocketClient {
         if (assetId && (bid > 0 || ask > 0)) {
           this.emitPriceEvent(assetId, bid, ask, 'price_changed');
         }
+        
+        // Check for trade data in price_changes
+        const tradeSize = pc.size || pc.volume || pc.trade_size || pc.amount || pc.quantity;
+        if (tradeSize && assetId) {
+          const tradePrice = bid || ask || parseFloat(String(pc.price || pc.last_price || 0));
+          if (tradePrice > 0) {
+            this.emitTradeEvent(assetId, {
+              price: tradePrice,
+              size: parseFloat(String(tradeSize)),
+              timestamp: Date.now(),
+              side: pc.side || (bid > 0 ? 'buy' : 'sell'),
+            });
+          }
+        }
       }
       return;
+    }
+    
+    // Check for trade data in other message formats
+    const tradeSize = msg.size || msg.volume || msg.trade_size || msg.amount || msg.quantity;
+    const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
+    if (tradeSize && assetId) {
+      const tradePrice = parseFloat(String(msg.price || msg.last_price || msg.best_bid || msg.best_ask || 0));
+      if (tradePrice > 0) {
+        this.emitTradeEvent(assetId, {
+          price: tradePrice,
+          size: parseFloat(String(tradeSize)),
+          timestamp: Date.now(),
+          side: msg.side || undefined,
+        });
+      }
     }
 
     // 2. Direct market messages or book updates
@@ -285,6 +328,30 @@ export class PolymarketWebSocketClient {
 
   offMessage(channel: string): void {
     this.messageHandlers.delete(channel);
+  }
+
+  onTrade(assetId: string, handler: (data: PolymarketTradeEvent) => void): void {
+    this.tradeHandlers.set(assetId, handler);
+  }
+
+  offTrade(assetId: string): void {
+    this.tradeHandlers.delete(assetId);
+  }
+
+  private emitTradeEvent(assetId: string, trade: { price: number; size: number; timestamp: number; side?: 'buy' | 'sell' }): void {
+    const event: PolymarketTradeEvent = {
+      assetId,
+      price: trade.price,
+      size: trade.size,
+      timestamp: trade.timestamp,
+      side: trade.side,
+    };
+    
+    const handler = this.tradeHandlers.get(assetId);
+    if (handler) handler(event);
+    
+    const globalHandler = this.tradeHandlers.get('*');
+    if (globalHandler) globalHandler(event);
   }
 
   private attemptReconnect(): void {

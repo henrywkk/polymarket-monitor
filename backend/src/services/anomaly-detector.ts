@@ -14,10 +14,7 @@ import {
   calculateMean,
   calculateStandardDeviation,
   calculateZScore,
-  isAnomaly,
   calculatePercentageChange,
-  calculateMovingAverage,
-  calculateMovingStandardDeviation,
 } from '../utils/statistics';
 
 export interface AlertEvent {
@@ -33,7 +30,6 @@ export interface AlertEvent {
 }
 
 export class AnomalyDetector {
-  private readonly Z_SCORE_THRESHOLD = 3.5; // 3.5σ threshold for anomalies
   private readonly PRICE_VELOCITY_THRESHOLD = 15; // 15% price change in 1 minute
   private readonly FAT_FINGER_THRESHOLD = 30; // 30% price deviation
   private readonly LIQUIDITY_VACUUM_SPREAD_THRESHOLD = 0.10; // 10 cents

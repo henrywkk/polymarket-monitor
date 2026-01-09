@@ -457,9 +457,9 @@ export class MarketIngestionService {
 
       // Run anomaly detection on price update
       // Store price in Redis for velocity tracking
-      const priceKey = `prices:${marketId}:${outcome.id}`;
+      const priceHistoryKey = `prices:${marketId}:${outcome.id}`;
       await RedisSlidingWindow.add(
-        priceKey,
+        priceHistoryKey,
         {
           price: midPrice,
           timestamp: Date.now(),

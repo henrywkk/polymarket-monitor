@@ -277,7 +277,8 @@ export class AlertDispatcher {
 
       // Try to get the correct event slug from Polymarket API
       // The stored slug might be outcome-specific, but we need the parent event slug
-      const correctSlug = await this.fetchCorrectEventSlug(marketId, market.slug);
+      // Also try to find parent event by matching question pattern
+      const correctSlug = await this.fetchCorrectEventSlug(marketId, market.slug, market.question);
 
       return {
         marketName: market.question,
@@ -295,8 +296,14 @@ export class AlertDispatcher {
    * Fetch the correct event slug from Polymarket API
    * The stored slug might be outcome-specific, but we need the parent event slug
    * Uses caching to avoid excessive API calls
+   * 
+   * Strategy:
+   * 1. Try to fetch market data (might be condition_id)
+   * 2. Extract question_id or event_id from market data
+   * 3. Fetch event data using question_id to get correct slug
+   * 4. If API fails, try to find parent event in database by question pattern
    */
-  private async fetchCorrectEventSlug(marketId: string, storedSlug?: string): Promise<string | undefined> {
+  private async fetchCorrectEventSlug(marketId: string, storedSlug?: string, question?: string): Promise<string | undefined> {
     try {
       // Check cache first (24 hour TTL)
       const cacheKey = `event_slug:${marketId}`;
@@ -305,51 +312,136 @@ export class AlertDispatcher {
         return cached;
       }
 
-      // Try to fetch from Polymarket Gamma API
-      // The event endpoint should return the parent event with the correct slug
-      const endpoints = [
-        `https://gamma-api.polymarket.com/events/${marketId}`,
+      // Step 1: Try to fetch market data first (might be condition_id)
+      // This will give us the question_id or event_id
+      const marketEndpoints = [
         `https://gamma-api.polymarket.com/markets/${marketId}`,
-        `https://api.polymarket.com/v2/events/${marketId}`,
+        `https://clob.polymarket.com/markets/${marketId}`,
+        `https://api.polymarket.com/v2/markets/${marketId}`,
       ];
 
-      for (const endpoint of endpoints) {
+      let questionId: string | undefined;
+      let eventId: string | undefined;
+      let eventSlug: string | undefined;
+
+      // Try to get market data and extract question_id/event_id
+      for (const endpoint of marketEndpoints) {
         try {
           const response = await axios.get(endpoint, {
-            timeout: 3000, // Shorter timeout for alert processing
-            headers: {
-              'Accept': 'application/json',
-            },
+            timeout: 3000,
+            headers: { 'Accept': 'application/json' },
           });
 
           const data = response.data;
           
-          // Look for event slug in various possible fields
-          // Priority: event.slug > slug > eventSlug > market_slug
-          const eventSlug = data.event?.slug || 
-                           data.slug || 
-                           data.eventSlug ||
-                           data.market_slug ||
-                           (data.event && (data.event.market_slug || data.event.slug));
+          // Extract question_id or event_id from market data
+          questionId = data.question_id || data.questionId || data.event?.question_id || data.event?.questionId;
+          eventId = data.event_id || data.eventId || data.event?.id;
+          
+          // Sometimes the slug is directly in the market data
+          eventSlug = data.event?.slug || 
+                     data.slug || 
+                     data.eventSlug ||
+                     data.market_slug ||
+                     (data.event && (data.event.market_slug || data.event.slug));
 
-          if (eventSlug) {
-            // Cache the correct slug for 24 hours
-            await redis.setex(cacheKey, 86400, eventSlug);
-            
-            // Only log if it's different from stored slug
-            if (eventSlug !== storedSlug) {
-              console.log(`[Alert Dispatcher] Found correct event slug for ${marketId}: ${eventSlug} (was: ${storedSlug || 'none'})`);
-            }
-            
-            return eventSlug;
+          if (questionId || eventId || eventSlug) {
+            break; // Found what we need
           }
         } catch (error) {
-          // Try next endpoint silently
-          continue;
+          continue; // Try next endpoint
+        }
+      }
+
+      // Step 2: If we found question_id/event_id but no slug, fetch the event
+      if ((questionId || eventId) && !eventSlug) {
+        const eventIdToUse = questionId || eventId;
+        const eventEndpoints = [
+          `https://gamma-api.polymarket.com/events/${eventIdToUse}`,
+          `https://api.polymarket.com/v2/events/${eventIdToUse}`,
+        ];
+
+        for (const endpoint of eventEndpoints) {
+          try {
+            const response = await axios.get(endpoint, {
+              timeout: 3000,
+              headers: { 'Accept': 'application/json' },
+            });
+
+            const data = response.data;
+            eventSlug = data.event?.slug || 
+                       data.slug || 
+                       data.eventSlug ||
+                       data.market_slug ||
+                       (data.event && (data.event.market_slug || data.event.slug));
+
+            if (eventSlug) {
+              break;
+            }
+          } catch (error) {
+            continue;
+          }
+        }
+      }
+
+      // Step 3: Cache and return result
+      if (eventSlug) {
+        await redis.setex(cacheKey, 86400, eventSlug);
+        
+        // Only log if it's different from stored slug
+        if (eventSlug !== storedSlug) {
+          console.log(`[Alert Dispatcher] Found correct event slug for ${marketId}: ${eventSlug} (was: ${storedSlug || 'none'})`);
+        }
+        
+        return eventSlug;
+      }
+
+      // Step 4: If API failed, try to find parent event in database by question pattern
+      // Pattern: "Will [Outcome] win [Category] at the [Award]?" -> "[Award]: [Category] Winner"
+      if (!eventSlug && question) {
+        try {
+          // Extract award and category from question
+          // Example: "Will Severance win Best Television Series – Drama at the 83rd Golden Globes?"
+          //          -> Award: "Golden Globes", Category: "Best Television Series – Drama"
+          const match = question.match(/win\s+(.+?)\s+at\s+the\s+(\d+[a-z]{2})?\s*(.+?)(?:\?|$)/i);
+          if (match) {
+            const category = match[1]?.trim();
+            const awardName = match[3]?.trim();
+            
+            // Try to find parent market with pattern: "[Award]: [Category] Winner"
+            if (category && awardName) {
+              // Build pattern: "Golden Globes: Best Television Series – Drama Winner"
+              const parentPattern = `${awardName}: ${category} Winner`;
+              
+              const parentResult = await query(
+                `SELECT id, slug FROM markets 
+                 WHERE question ILIKE $1 
+                   AND slug NOT LIKE 'will-%'
+                   AND slug NOT LIKE '%-win-%'
+                 ORDER BY created_at DESC 
+                 LIMIT 1`,
+                [`%${parentPattern}%`]
+              );
+              
+              if (parentResult.rows.length > 0) {
+                eventSlug = parentResult.rows[0].slug;
+                console.log(`[Alert Dispatcher] Found parent event slug via database: ${eventSlug} for market ${marketId}`);
+                await redis.setex(cacheKey, 86400, eventSlug);
+                return eventSlug;
+              }
+            }
+          }
+        } catch (error) {
+          // Silently continue if database query fails
         }
       }
 
       // If we couldn't fetch a better slug, use the stored one and cache it
+      if (eventSlug) {
+        await redis.setex(cacheKey, 86400, eventSlug);
+        return eventSlug;
+      }
+
       if (storedSlug) {
         await redis.setex(cacheKey, 86400, storedSlug);
       }
@@ -357,7 +449,6 @@ export class AlertDispatcher {
       return storedSlug;
     } catch (error) {
       // If API fetch fails, fall back to stored slug silently
-      // Don't log warnings for every failed fetch to avoid log spam
       return storedSlug;
     }
   }

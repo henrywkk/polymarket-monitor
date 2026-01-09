@@ -425,6 +425,140 @@ export const MarketDetail = () => {
           </div>
         </div>
       )}
+
+      {/* Orderbook Metrics */}
+      {orderbookData && orderbookData.byOutcome && Object.keys(orderbookData.byOutcome).length > 0 && (
+        <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-6 mt-6">
+          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+            <Activity className="w-5 h-5" />
+            Orderbook Metrics
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.entries(orderbookData.byOutcome).map(([outcomeName, metrics]) => {
+              const latest = Array.isArray(metrics) && metrics.length > 0 ? metrics[0] : null;
+              if (!latest) return null;
+              
+              return (
+                <div key={outcomeName} className="bg-slate-900/50 rounded-xl p-4 border border-slate-800/60">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                    {outcomeName}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 text-xs">Spread</span>
+                      <span className="text-white font-mono text-sm">
+                        {(latest.spread * 100).toFixed(2)}¢ ({(latest.spreadPercent || 0).toFixed(2)}%)
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 text-xs">Depth (2%)</span>
+                      <span className="text-white font-mono text-sm">
+                        {formatVolume(latest.depth2Percent)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 text-xs">Bid/Ask</span>
+                      <span className="text-white font-mono text-sm">
+                        {latest.bestBid.toFixed(4)} / {latest.bestAsk.toFixed(4)}
+                      </span>
+                    </div>
+                    {latest.spread > 0.10 && (
+                      <div className="mt-2 px-2 py-1 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400 font-bold">
+                        ⚠️ Liquidity Vacuum
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Recent Trades */}
+      {(realtimeTrades.length > 0 || (tradeHistory && tradeHistory.data.length > 0)) && (
+        <div className="bg-[#121826] rounded-3xl border border-slate-800/60 shadow-2xl p-6 mt-6">
+          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+            <Activity className="w-5 h-5" />
+            Recent Trades
+          </h2>
+          
+          {/* Show real-time trades if available, otherwise show from API */}
+          {realtimeTrades.length > 0 ? (
+            <div className="space-y-2">
+              {realtimeTrades.slice(0, 20).map((trade, index) => (
+                <div
+                  key={`${trade.timestamp}-${index}`}
+                  className="bg-slate-900/50 rounded-lg p-3 border border-slate-800/60 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${
+                      trade.side === 'buy' 
+                        ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                        : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                    }`}>
+                      {trade.side?.toUpperCase() || 'TRADE'}
+                    </span>
+                    <span className="text-slate-400 text-xs font-mono">
+                      {new Date(trade.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-white font-mono font-bold">
+                      {trade.price.toFixed(4)}
+                    </span>
+                    <span className="text-slate-300 font-mono">
+                      {formatVolume(trade.size)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : tradeHistory && tradeHistory.data.length > 0 ? (
+            <div className="space-y-2">
+              {tradeHistory.data.slice(0, 20).map((trade, index) => (
+                <div
+                  key={`${trade.timestamp}-${index}`}
+                  className="bg-slate-900/50 rounded-lg p-3 border border-slate-800/60 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500 font-bold uppercase">
+                      {trade.outcomeName}
+                    </span>
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${
+                      trade.side === 'buy' 
+                        ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                        : trade.side === 'sell'
+                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                        : 'bg-slate-700/50 text-slate-400 border border-slate-700'
+                    }`}>
+                      {trade.side?.toUpperCase() || 'TRADE'}
+                    </span>
+                    <span className="text-slate-400 text-xs font-mono">
+                      {new Date(trade.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-white font-mono font-bold">
+                      {trade.price.toFixed(4)}
+                    </span>
+                    <span className="text-slate-300 font-mono">
+                      {formatVolume(trade.size)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          
+          {(!realtimeTrades.length && (!tradeHistory || tradeHistory.data.length === 0)) && (
+            <div className="text-center py-8 text-slate-500">
+              <Activity className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No recent trades</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

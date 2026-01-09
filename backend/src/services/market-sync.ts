@@ -20,8 +20,7 @@ export class MarketSyncService {
     if (newMarketDetector) {
       this.newMarketDetector = newMarketDetector;
     } else {
-      const anomalyDetector = ingestionService.anomalyDetector;
-      this.newMarketDetector = new NewMarketDetector(anomalyDetector);
+      this.newMarketDetector = new NewMarketDetector();
     }
   }
 

@@ -179,14 +179,14 @@ export class NewMarketDetector {
         };
 
         alerts.push(alert);
+        
+        // Mark market as known
+        await this.markMarketAsKnown(marketId);
       } catch (error) {
         // Log error but continue processing other markets
         console.error(`[New Market Detector] Error processing market ${market.id || 'unknown'}:`, error);
         continue;
       }
-      
-      // Mark market as known
-      await this.markMarketAsKnown(marketId);
     }
 
     return alerts;

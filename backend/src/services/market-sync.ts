@@ -156,6 +156,22 @@ export class MarketSyncService {
               continue;
             }
             
+            // Try to fetch question_id if not present in API response
+            // This helps identify child markets early
+            if (!market.questionId && market.conditionId) {
+              try {
+                // Quick fetch with short timeout to avoid blocking
+                market.questionId = await Promise.race([
+                  this.restClient.fetchQuestionId(market.conditionId),
+                  new Promise<string | undefined>((resolve) => 
+                    setTimeout(() => resolve(undefined), 2000) // 2 second timeout
+                  )
+                ]) as string | undefined;
+              } catch (error) {
+                // Continue if fetch fails - will be checked again in syncMarket()
+              }
+            }
+            
             // Filter out child markets: if question_id exists and differs from condition_id,
             // this is a child market (outcome) that should not be a separate market
             // Exception: if conditionId is missing but questionId exists, it might be a parent event
@@ -411,6 +427,29 @@ export class MarketSyncService {
         }
       } catch (error) {
         // Silently continue - question_id is optional
+      }
+    }
+
+    // Check if this is a child market (outcome) that should not be a separate market
+    // A child market has question_id that points to a parent market
+    // Rule: If question_id exists and differs from condition_id, check if parent exists
+    if (questionId && questionId !== marketId) {
+      try {
+        // Check if a parent market exists with this question_id as its id
+        // This means question_id points to an existing parent market
+        const parentCheck = await query(
+          `SELECT id, question FROM markets WHERE id = $1 LIMIT 1`,
+          [questionId]
+        );
+        
+        if (parentCheck.rows.length > 0) {
+          const parent = parentCheck.rows[0];
+          console.log(`[Sync] Skipping child market (outcome): ${marketId} - question: "${pmMarket.question?.substring(0, 60)}" - Parent exists: ${parent.id} - "${parent.question?.substring(0, 60)}"`);
+          return; // Don't sync this market - it's a child/outcome, not a parent market
+        }
+      } catch (error) {
+        // If database check fails, continue with sync (better to have duplicate than miss a market)
+        console.error(`[Sync] Error checking for parent market:`, error);
       }
     }
 

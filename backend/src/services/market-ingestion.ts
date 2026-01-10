@@ -319,8 +319,12 @@ export class MarketIngestionService {
       );
     } catch (error) {
       // If conflict on (market_id, outcome) unique constraint, try to update by that
-      if ((error as any).code === '23505' && (error as any).constraint === 'outcomes_market_id_outcome_key') {
+      // This is an expected scenario when the same outcome exists with a different id
+      // (e.g., when token_id changes but outcome name stays the same)
+      const pgError = error as any;
+      if (pgError.code === '23505' && pgError.constraint === 'outcomes_market_id_outcome_key') {
         try {
+          // Silently handle this expected conflict - don't log as error
           await query(
             `UPDATE outcomes 
              SET id = $1, token_id = $4, volume = $5, volume_24h = $6
@@ -334,11 +338,15 @@ export class MarketIngestionService {
               outcome.volume24h || 0
             ]
           );
+          // Successfully handled - no need to log
+          return;
         } catch (updateError) {
+          // Only log if the update itself fails
           console.error(`Error updating outcome ${outcome.id} by (market_id, outcome):`, updateError);
           throw updateError;
         }
       } else {
+        // Log unexpected errors
         console.error(`Error upserting outcome ${outcome.id}:`, error);
         throw error;
       }

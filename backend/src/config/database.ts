@@ -24,7 +24,15 @@ export const query = async (text: string, params?: unknown[]) => {
     // Only log errors, not successful queries
     return res;
   } catch (error) {
-    // Only log errors with query preview (first 200 chars) to avoid log spam
+    const pgError = error as any;
+    // Don't log expected constraint violations - these are handled by callers
+    // (e.g., unique constraint violations that are caught and handled gracefully)
+    if (pgError.code === '23505') {
+      // Unique constraint violation - let caller handle it silently
+      throw error;
+    }
+    
+    // Only log unexpected errors with query preview (first 200 chars) to avoid log spam
     const queryPreview = text.length > 200 ? text.substring(0, 200) + '...' : text;
     console.error('Database query error', { 
       query: queryPreview, 

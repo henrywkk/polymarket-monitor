@@ -14,6 +14,56 @@
 -- ============================================================================
 
 -- ============================================================================
+-- DIAGNOSTIC: Check if question_id is populated
+-- ============================================================================
+-- Run this FIRST to see if question_id column has any data
+SELECT 
+    COUNT(*) as total_markets,
+    COUNT(question_id) as markets_with_question_id,
+    COUNT(*) - COUNT(question_id) as markets_without_question_id
+FROM markets;
+
+-- ============================================================================
+-- DIAGNOSTIC: Sample markets with question_id
+-- ============================================================================
+-- See what question_id values look like
+SELECT 
+    id,
+    question,
+    question_id,
+    CASE 
+        WHEN question_id = id THEN 'self-referential'
+        WHEN question_id IS NULL THEN 'no parent'
+        ELSE 'has parent'
+    END as relationship_type
+FROM markets
+WHERE question_id IS NOT NULL
+ORDER BY question_id, id
+LIMIT 20;
+
+-- ============================================================================
+-- DIAGNOSTIC: Check if question_id values match any market IDs
+-- ============================================================================
+-- This shows which question_id values point to existing markets vs orphaned
+SELECT 
+    m1.id,
+    m1.question,
+    m1.question_id,
+    CASE 
+        WHEN m2.id IS NOT NULL THEN 'parent EXISTS'
+        ELSE 'parent NOT found'
+    END as parent_status,
+    m2.id as parent_market_id
+FROM markets m1
+LEFT JOIN markets m2 ON m1.question_id = m2.id
+WHERE m1.question_id IS NOT NULL
+  AND m1.id != m1.question_id  -- Not self-referential
+ORDER BY 
+    CASE WHEN m2.id IS NOT NULL THEN 0 ELSE 1 END,  -- Parents that exist first
+    m1.question_id
+LIMIT 50;
+
+-- ============================================================================
 -- STEP 1: Identify Child Markets (Review Before Deleting)
 -- ============================================================================
 -- This query shows all child markets that should be removed
@@ -31,7 +81,6 @@ FROM markets m1
 JOIN markets m2 ON m1.question_id = m2.id
 WHERE m1.question_id IS NOT NULL 
   AND m1.id != m1.question_id  -- question_id points to different market
-  AND m1.question_id = m2.id   -- parent market exists
 ORDER BY m2.id, m1.question;
 
 -- ============================================================================

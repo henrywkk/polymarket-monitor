@@ -67,37 +67,53 @@ LIMIT 50;
 -- STEP 1: Identify Child Markets (Review Before Deleting)
 -- ============================================================================
 -- This query shows all child markets that should be removed
+-- NOTE: Includes markets where parent exists AND where parent doesn't exist (orphaned)
 SELECT 
     m1.id as child_market_id,
     m1.question as child_question,
     m1.slug as child_slug,
     m1.question_id,
+    CASE 
+        WHEN m2.id IS NOT NULL THEN 'parent EXISTS in DB'
+        ELSE 'parent NOT in DB (orphaned)'
+    END as parent_status,
     m2.id as parent_market_id,
     m2.question as parent_question,
     m2.slug as parent_slug,
     (SELECT COUNT(*) FROM outcomes WHERE market_id = m1.id) as outcome_count,
     (SELECT COUNT(*) FROM price_history WHERE market_id = m1.id) as price_history_count
 FROM markets m1
-JOIN markets m2 ON m1.question_id = m2.id
+LEFT JOIN markets m2 ON m1.question_id = m2.id
 WHERE m1.question_id IS NOT NULL 
-  AND m1.id != m1.question_id  -- question_id points to different market
-ORDER BY m2.id, m1.question;
+  AND m1.id != m1.question_id  -- question_id points to different market (not self-referential)
+ORDER BY 
+    CASE WHEN m2.id IS NOT NULL THEN 0 ELSE 1 END,  -- Parents that exist first
+    m1.question_id,
+    m1.question;
 
 -- ============================================================================
 -- STEP 2: Count Child Markets by Parent (Summary View)
 -- ============================================================================
+-- Shows child markets grouped by their question_id (parent identifier)
+-- Note: Parent may or may not exist in database
 SELECT 
-    m2.id as parent_id,
-    m2.question as parent_question,
+    m1.question_id as parent_question_id,
+    CASE 
+        WHEN m2.id IS NOT NULL THEN m2.question
+        ELSE 'Parent not in database'
+    END as parent_question,
+    CASE 
+        WHEN m2.id IS NOT NULL THEN 'exists'
+        ELSE 'orphaned'
+    END as parent_status,
     COUNT(m1.id) as child_markets_count,
     SUM((SELECT COUNT(*) FROM outcomes WHERE market_id = m1.id)) as total_child_outcomes,
     SUM((SELECT COUNT(*) FROM price_history WHERE market_id = m1.id)) as total_price_records
 FROM markets m1
-JOIN markets m2 ON m1.question_id = m2.id
+LEFT JOIN markets m2 ON m1.question_id = m2.id
 WHERE m1.question_id IS NOT NULL 
   AND m1.id != m1.question_id
-  AND m1.question_id = m2.id
-GROUP BY m2.id, m2.question
+GROUP BY m1.question_id, m2.id, m2.question
 ORDER BY child_markets_count DESC;
 
 -- ============================================================================
@@ -107,6 +123,11 @@ ORDER BY child_markets_count DESC;
 SELECT 
     m1.id as child_market_id,
     m1.question as child_question,
+    m1.question_id,
+    CASE 
+        WHEN m2.id IS NOT NULL THEN 'parent EXISTS'
+        ELSE 'parent NOT in DB'
+    END as parent_status,
     m2.id as parent_market_id,
     m2.question as parent_question,
     (SELECT COUNT(*) FROM outcomes WHERE market_id = m1.id) as outcome_count,
@@ -114,10 +135,9 @@ SELECT
     m1.volume,
     m1.volume_24h
 FROM markets m1
-JOIN markets m2 ON m1.question_id = m2.id
+LEFT JOIN markets m2 ON m1.question_id = m2.id
 WHERE m1.question_id IS NOT NULL 
   AND m1.id != m1.question_id
-  AND m1.question_id = m2.id
   AND (
     (SELECT COUNT(*) FROM outcomes WHERE market_id = m1.id) > 0
     OR (SELECT COUNT(*) FROM price_history WHERE market_id = m1.id) > 0
@@ -129,33 +149,32 @@ ORDER BY m1.volume DESC;
 -- STEP 4: Safe Delete - Only Empty Child Markets
 -- ============================================================================
 -- This deletes child markets that have NO outcomes, price history, or volume
+-- Works for both markets with existing parents AND orphaned markets
 -- Foreign key constraints will automatically delete related records
-DELETE FROM markets m1
-WHERE EXISTS (
-    SELECT 1 FROM markets m2 
-    WHERE m1.question_id = m2.id
-      AND m1.question_id IS NOT NULL
-      AND m1.id != m1.question_id
-)
-AND NOT EXISTS (
-    SELECT 1 FROM outcomes WHERE market_id = m1.id
-)
-AND NOT EXISTS (
-    SELECT 1 FROM price_history WHERE market_id = m1.id
-)
-AND (m1.volume = 0 OR m1.volume IS NULL)
-AND (m1.volume_24h = 0 OR m1.volume_24h IS NULL);
+DELETE FROM markets
+WHERE question_id IS NOT NULL
+  AND id != question_id  -- Not self-referential
+  AND NOT EXISTS (
+    SELECT 1 FROM outcomes WHERE market_id = markets.id
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM price_history WHERE market_id = markets.id
+  )
+  AND (volume = 0 OR volume IS NULL)
+  AND (volume_24h = 0 OR volume_24h IS NULL);
 
 -- ============================================================================
 -- STEP 5: Verify Deletion (Run After Step 4)
 -- ============================================================================
--- Check how many child markets remain
-SELECT COUNT(*) as remaining_child_markets
+-- Check how many child markets remain (including orphaned)
+SELECT 
+    COUNT(*) as remaining_child_markets,
+    COUNT(CASE WHEN m2.id IS NOT NULL THEN 1 END) as with_parent_in_db,
+    COUNT(CASE WHEN m2.id IS NULL THEN 1 END) as orphaned
 FROM markets m1
-JOIN markets m2 ON m1.question_id = m2.id
+LEFT JOIN markets m2 ON m1.question_id = m2.id
 WHERE m1.question_id IS NOT NULL 
-  AND m1.id != m1.question_id
-  AND m1.question_id = m2.id;
+  AND m1.id != m1.question_id;
 
 -- ============================================================================
 -- STEP 6: Manual Review Required - Markets with Data
@@ -197,18 +216,15 @@ GROUP BY m1.id, m1.question;
 -- ============================================================================
 -- WARNING: This will delete ALL child markets and their related data
 -- (outcomes, price_history) due to CASCADE foreign keys
+-- This includes both markets with parents in DB AND orphaned markets
 -- 
 -- Only run this if you're sure you want to delete everything!
 -- 
 -- Uncomment to execute:
 /*
-DELETE FROM markets m1
-WHERE EXISTS (
-    SELECT 1 FROM markets m2 
-    WHERE m1.question_id = m2.id
-      AND m1.question_id IS NOT NULL
-      AND m1.id != m1.question_id
-);
+DELETE FROM markets
+WHERE question_id IS NOT NULL
+  AND id != question_id;
 */
 
 -- ============================================================================

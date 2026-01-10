@@ -119,12 +119,25 @@ export class NewMarketDetector {
    */
   private matchesKeywords(market: PolymarketMarket): boolean {
     const question = (market.question || '').toLowerCase();
-    const category = (market.category || '').toLowerCase();
+    
+    // Handle category - can be string, object, or null
+    let categoryStr = '';
+    if (market.category) {
+      if (typeof market.category === 'string') {
+        categoryStr = market.category.toLowerCase();
+      } else if (typeof market.category === 'object' && market.category !== null) {
+        const catObj = market.category as any;
+        categoryStr = (catObj.label || catObj.slug || String(catObj.id || '')).toLowerCase();
+      } else {
+        categoryStr = String(market.category).toLowerCase();
+      }
+    }
+    
     const tags = (market.tags || []).map(t => 
       typeof t === 'string' ? t.toLowerCase() : String(t).toLowerCase()
     ).join(' ');
 
-    const searchText = `${question} ${category} ${tags}`;
+    const searchText = `${question} ${categoryStr} ${tags}`;
 
     return this.KEYWORD_FILTERS.some(keyword => 
       searchText.includes(keyword.toLowerCase())
@@ -138,17 +151,18 @@ export class NewMarketDetector {
     const alerts: AlertEvent[] = [];
 
     for (const market of markets) {
-      const marketId = market.conditionId || market.questionId || market.id;
-      if (!marketId) continue;
+      try {
+        const marketId = market.conditionId || market.questionId || market.id;
+        if (!marketId) continue;
 
-      const isNew = await this.isNewMarket(marketId);
-      if (!isNew) continue;
+        const isNew = await this.isNewMarket(marketId);
+        if (!isNew) continue;
 
-      // Check keyword filters (optional - can be made configurable)
-      // For now, we'll alert on all new markets, but can filter by keywords if needed
-      const matchesKeywords = this.matchesKeywords(market);
-      
-      // Generate alert for new market
+        // Check keyword filters (optional - can be made configurable)
+        // For now, we'll alert on all new markets, but can filter by keywords if needed
+        const matchesKeywords = this.matchesKeywords(market);
+        
+        // Generate alert for new market
         const alert: AlertEvent = {
           type: 'new_market',
           marketId,
@@ -164,7 +178,12 @@ export class NewMarketDetector {
           timestamp: Date.now(),
         };
 
-      alerts.push(alert);
+        alerts.push(alert);
+      } catch (error) {
+        // Log error but continue processing other markets
+        console.error(`[New Market Detector] Error processing market ${market.id || 'unknown'}:`, error);
+        continue;
+      }
       
       // Mark market as known
       await this.markMarketAsKnown(marketId);

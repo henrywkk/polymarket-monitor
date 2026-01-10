@@ -221,11 +221,15 @@ export class MarketSyncService {
       
       console.log(`[Sync] Market categories:`, categoryCounts);
 
-      // Detect new markets before syncing
-      const newMarketAlerts = await this.newMarketDetector.detectNewMarkets(allMarkets);
-      for (const alert of newMarketAlerts) {
-        await this.ingestionService.anomalyDetector.storeAlert(alert);
-        console.log(`[New Market] Alert generated for: ${alert.data.marketTitle}`);
+      // Detect new markets before syncing (non-blocking - errors won't stop sync)
+      try {
+        const newMarketAlerts = await this.newMarketDetector.detectNewMarkets(allMarkets);
+        for (const alert of newMarketAlerts) {
+          await this.ingestionService.anomalyDetector.storeAlert(alert);
+          console.log(`[New Market] Alert generated for: ${alert.data.marketTitle}`);
+        }
+      } catch (error) {
+        console.error('[Sync] Error detecting new markets (continuing with sync):', error);
       }
 
       let synced = 0;

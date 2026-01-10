@@ -1,0 +1,182 @@
+-- ============================================================================
+-- Cleanup Script: Remove Child Markets (Outcomes) Stored as Separate Markets
+-- ============================================================================
+-- 
+-- This script identifies and removes markets that are actually outcomes/child
+-- markets of parent events, not standalone markets.
+--
+-- A child market is identified by:
+-- 1. Has a question_id that points to another market (parent)
+-- 2. question_id != id (not self-referential)
+-- 3. Parent market exists in database
+--
+-- WARNING: Run the SELECT queries first to review what will be deleted!
+-- ============================================================================
+
+-- ============================================================================
+-- STEP 1: Identify Child Markets (Review Before Deleting)
+-- ============================================================================
+-- This query shows all child markets that should be removed
+SELECT 
+    m1.id as child_market_id,
+    m1.question as child_question,
+    m1.slug as child_slug,
+    m1.question_id,
+    m2.id as parent_market_id,
+    m2.question as parent_question,
+    m2.slug as parent_slug,
+    (SELECT COUNT(*) FROM outcomes WHERE market_id = m1.id) as outcome_count,
+    (SELECT COUNT(*) FROM price_history WHERE market_id = m1.id) as price_history_count
+FROM markets m1
+JOIN markets m2 ON m1.question_id = m2.id
+WHERE m1.question_id IS NOT NULL 
+  AND m1.id != m1.question_id  -- question_id points to different market
+  AND m1.question_id = m2.id   -- parent market exists
+ORDER BY m2.id, m1.question;
+
+-- ============================================================================
+-- STEP 2: Count Child Markets by Parent (Summary View)
+-- ============================================================================
+SELECT 
+    m2.id as parent_id,
+    m2.question as parent_question,
+    COUNT(m1.id) as child_markets_count,
+    SUM((SELECT COUNT(*) FROM outcomes WHERE market_id = m1.id)) as total_child_outcomes,
+    SUM((SELECT COUNT(*) FROM price_history WHERE market_id = m1.id)) as total_price_records
+FROM markets m1
+JOIN markets m2 ON m1.question_id = m2.id
+WHERE m1.question_id IS NOT NULL 
+  AND m1.id != m1.question_id
+  AND m1.question_id = m2.id
+GROUP BY m2.id, m2.question
+ORDER BY child_markets_count DESC;
+
+-- ============================================================================
+-- STEP 3: Check for Markets with Data (Requires Manual Review)
+-- ============================================================================
+-- These child markets have outcomes or price history - review before deleting
+SELECT 
+    m1.id as child_market_id,
+    m1.question as child_question,
+    m2.id as parent_market_id,
+    m2.question as parent_question,
+    (SELECT COUNT(*) FROM outcomes WHERE market_id = m1.id) as outcome_count,
+    (SELECT COUNT(*) FROM price_history WHERE market_id = m1.id) as price_history_count,
+    m1.volume,
+    m1.volume_24h
+FROM markets m1
+JOIN markets m2 ON m1.question_id = m2.id
+WHERE m1.question_id IS NOT NULL 
+  AND m1.id != m1.question_id
+  AND m1.question_id = m2.id
+  AND (
+    (SELECT COUNT(*) FROM outcomes WHERE market_id = m1.id) > 0
+    OR (SELECT COUNT(*) FROM price_history WHERE market_id = m1.id) > 0
+    OR m1.volume > 0
+  )
+ORDER BY m1.volume DESC;
+
+-- ============================================================================
+-- STEP 4: Safe Delete - Only Empty Child Markets
+-- ============================================================================
+-- This deletes child markets that have NO outcomes, price history, or volume
+-- Foreign key constraints will automatically delete related records
+DELETE FROM markets m1
+WHERE EXISTS (
+    SELECT 1 FROM markets m2 
+    WHERE m1.question_id = m2.id
+      AND m1.question_id IS NOT NULL
+      AND m1.id != m1.question_id
+)
+AND NOT EXISTS (
+    SELECT 1 FROM outcomes WHERE market_id = m1.id
+)
+AND NOT EXISTS (
+    SELECT 1 FROM price_history WHERE market_id = m1.id
+)
+AND (m1.volume = 0 OR m1.volume IS NULL)
+AND (m1.volume_24h = 0 OR m1.volume_24h IS NULL);
+
+-- ============================================================================
+-- STEP 5: Verify Deletion (Run After Step 4)
+-- ============================================================================
+-- Check how many child markets remain
+SELECT COUNT(*) as remaining_child_markets
+FROM markets m1
+JOIN markets m2 ON m1.question_id = m2.id
+WHERE m1.question_id IS NOT NULL 
+  AND m1.id != m1.question_id
+  AND m1.question_id = m2.id;
+
+-- ============================================================================
+-- STEP 6: Manual Review Required - Markets with Data
+-- ============================================================================
+-- For child markets with outcomes/price history, you need to decide:
+-- Option A: Delete them (lose the data)
+-- Option B: Convert outcomes to parent market (complex migration)
+-- Option C: Keep them (not recommended - causes confusion)
+--
+-- To see what would be deleted (including related data):
+SELECT 
+    m1.id,
+    m1.question,
+    'outcomes' as related_table,
+    COUNT(*) as record_count
+FROM markets m1
+JOIN markets m2 ON m1.question_id = m2.id
+JOIN outcomes o ON o.market_id = m1.id
+WHERE m1.question_id IS NOT NULL 
+  AND m1.id != m1.question_id
+  AND m1.question_id = m2.id
+GROUP BY m1.id, m1.question
+UNION ALL
+SELECT 
+    m1.id,
+    m1.question,
+    'price_history' as related_table,
+    COUNT(*) as record_count
+FROM markets m1
+JOIN markets m2 ON m1.question_id = m2.id
+JOIN price_history ph ON ph.market_id = m1.id
+WHERE m1.question_id IS NOT NULL 
+  AND m1.id != m1.question_id
+  AND m1.question_id = m2.id
+GROUP BY m1.id, m1.question;
+
+-- ============================================================================
+-- STEP 7: Force Delete All Child Markets (USE WITH CAUTION!)
+-- ============================================================================
+-- WARNING: This will delete ALL child markets and their related data
+-- (outcomes, price_history) due to CASCADE foreign keys
+-- 
+-- Only run this if you're sure you want to delete everything!
+-- 
+-- Uncomment to execute:
+/*
+DELETE FROM markets m1
+WHERE EXISTS (
+    SELECT 1 FROM markets m2 
+    WHERE m1.question_id = m2.id
+      AND m1.question_id IS NOT NULL
+      AND m1.id != m1.question_id
+);
+*/
+
+-- ============================================================================
+-- STEP 8: Find Orphaned Markets (question_id points to non-existent parent)
+-- ============================================================================
+-- These markets have question_id but parent doesn't exist
+-- They might be legitimate or might need cleanup
+SELECT 
+    m1.id,
+    m1.question,
+    m1.question_id,
+    m1.slug,
+    (SELECT COUNT(*) FROM outcomes WHERE market_id = m1.id) as outcome_count
+FROM markets m1
+WHERE m1.question_id IS NOT NULL
+  AND m1.id != m1.question_id
+  AND NOT EXISTS (
+    SELECT 1 FROM markets m2 WHERE m2.id = m1.question_id
+  )
+ORDER BY m1.question_id;

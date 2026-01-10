@@ -329,8 +329,8 @@ export class MarketIngestionService {
           // The existing id should remain to preserve foreign key relationships
           await query(
             `UPDATE outcomes 
-             SET token_id = $4, volume = $5, volume_24h = $6
-             WHERE market_id = $2 AND outcome = $3`,
+             SET token_id = $3, volume = $4, volume_24h = $5
+             WHERE market_id = $1 AND outcome = $2`,
             [
               outcome.marketId, 
               outcome.outcome, 

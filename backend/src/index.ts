@@ -158,13 +158,20 @@ const startServer = async () => {
     await initializeDatabase();
     
     // Initialize new market detector with known markets from database
-    await newMarketDetector.initializeKnownMarkets().catch((error: unknown) => {
-      console.error('Error initializing known markets:', error);
+    // Use Promise.race with timeout to prevent hanging if Redis is slow
+    const initTimeout = 30000; // 30 seconds timeout
+    const initMarketsPromise = newMarketDetector.initializeKnownMarkets();
+    const initOutcomesPromise = newMarketDetector.initializeKnownOutcomes();
+    
+    await Promise.race([
+      Promise.all([initMarketsPromise, initOutcomesPromise]),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Initialization timeout')), initTimeout))
+    ]).catch((error: unknown) => {
+      console.error('Error initializing new market detector:', error);
+      // Continue anyway - initialization is not critical for server startup
     });
-    await newMarketDetector.initializeKnownOutcomes().catch((error: unknown) => {
-      console.error('Error initializing known outcomes:', error);
-    });
-    console.log('[New Market Detector] Initialized known markets and outcomes');
+    
+    console.log('[New Market Detector] Initialization complete');
     
     // Note: Redis connection is non-blocking and happens in background
     // Server will start even if Redis is unavailable (with degraded functionality)

@@ -34,13 +34,24 @@ let connectionAttempted = false;
 // Attempt connection (non-blocking)
 const attemptConnection = async () => {
   if (connectionAttempted) return;
+  
+  // Check if already connected or connecting
+  if (redis.status === 'ready' || redis.status === 'connecting') {
+    connectionAttempted = true;
+    return; // Already connected or connecting
+  }
+  
   connectionAttempted = true;
   
   try {
     await redis.connect();
     console.log('Redis client connected');
   } catch (error) {
-    console.warn('Redis connection failed (will retry in background):', error instanceof Error ? error.message : String(error));
+    const errMsg = error instanceof Error ? error.message : String(error);
+    // Don't log if it's just because we're already connected
+    if (!errMsg.includes('already connecting') && !errMsg.includes('already connected')) {
+      console.warn('Redis connection failed (will retry in background):', errMsg);
+    }
     // Connection will retry automatically via retryStrategy
   }
 };

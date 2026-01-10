@@ -324,13 +324,14 @@ export class MarketIngestionService {
       const pgError = error as any;
       if (pgError.code === '23505' && pgError.constraint === 'outcomes_market_id_outcome_key') {
         try {
-          // Silently handle this expected conflict - don't log as error
+          // Don't update the id if it's referenced by price_history (foreign key constraint)
+          // Only update fields that can be safely changed: token_id, volume, volume_24h
+          // The existing id should remain to preserve foreign key relationships
           await query(
             `UPDATE outcomes 
-             SET id = $1, token_id = $4, volume = $5, volume_24h = $6
+             SET token_id = $4, volume = $5, volume_24h = $6
              WHERE market_id = $2 AND outcome = $3`,
             [
-              outcome.id, 
               outcome.marketId, 
               outcome.outcome, 
               outcome.tokenId,
@@ -342,8 +343,13 @@ export class MarketIngestionService {
           return;
         } catch (updateError) {
           // Only log if the update itself fails
-          console.error(`Error updating outcome ${outcome.id} by (market_id, outcome):`, updateError);
-          throw updateError;
+          const updatePgError = updateError as any;
+          // Don't log foreign key constraint violations - these are expected when id can't be changed
+          if (updatePgError.code !== '23503') {
+            console.error(`Error updating outcome ${outcome.id} by (market_id, outcome):`, updateError);
+          }
+          // Don't throw - this is an expected scenario, just skip the update
+          return;
         }
       } else {
         // Log unexpected errors

@@ -106,6 +106,15 @@ export class MarketSyncService {
       const pageSize = 100; // Markets per API call
       const maxMarkets = limit;
       
+      // Check if database is empty or has very few markets (fresh deployment)
+      const marketCountResult = await query('SELECT COUNT(*) as count FROM markets');
+      const marketCount = parseInt(marketCountResult.rows[0]?.count || '0', 10);
+      const isFreshDeployment = marketCount < 10; // Consider fresh if less than 10 markets
+      
+      if (isFreshDeployment) {
+        console.log(`[Sync] Fresh deployment detected (${marketCount} markets in DB). Will force sync all markets.`);
+      }
+      
       console.log(`Starting market sync with pagination (max: ${maxMarkets}, page size: ${pageSize})...`);
       
       let allMarkets: PolymarketMarket[] = [];
@@ -140,14 +149,26 @@ export class MarketSyncService {
           consecutiveEmptyPages = 0; // Reset counter on successful fetch
           
           // Deduplicate and categorize markets
+          // Filter out child markets (outcomes) - these have question_id different from condition_id
           for (const market of pageMarkets) {
             const marketId = market.conditionId || market.questionId || market.id;
-            if (marketId && !seenIds.has(marketId)) {
-              seenIds.add(marketId);
-              // Detect category from market data (tags, question, etc.)
-              market.category = this.detectCategory(market);
-              allMarkets.push(market);
+            if (!marketId || seenIds.has(marketId)) {
+              continue;
             }
+            
+            // Filter out child markets: if question_id exists and differs from condition_id,
+            // this is a child market (outcome) that should not be a separate market
+            // Exception: if conditionId is missing but questionId exists, it might be a parent event
+            if (market.questionId && market.conditionId && market.questionId !== market.conditionId) {
+              // This is a child market - skip it as it should be an outcome, not a separate market
+              console.log(`[Sync] Skipping child market (outcome): ${marketId} - question_id: ${market.questionId}, condition_id: ${market.conditionId}, question: ${market.question?.substring(0, 60)}`);
+              continue;
+            }
+            
+            seenIds.add(marketId);
+            // Detect category from market data (tags, question, etc.)
+            market.category = this.detectCategory(market);
+            allMarkets.push(market);
           }
           
           totalFetched += pageMarkets.length;
@@ -212,12 +233,16 @@ export class MarketSyncService {
       for (const pmMarket of allMarkets) {
         try {
           // Smart sync: only sync if market has changed
+          // On fresh deployment, force sync all markets
           const marketId = pmMarket.conditionId || pmMarket.questionId || pmMarket.id || '';
-          if (marketId && await this.hasMarketChanged(pmMarket, marketId)) {
-            await this.syncMarket(pmMarket);
-            synced++;
-          } else {
-            skipped++;
+          if (marketId) {
+            const shouldSync = isFreshDeployment || await this.hasMarketChanged(pmMarket, marketId);
+            if (shouldSync) {
+              await this.syncMarket(pmMarket);
+              synced++;
+            } else {
+              skipped++;
+            }
           }
         } catch (error) {
           console.error(`Error syncing market ${pmMarket.id}:`, error);

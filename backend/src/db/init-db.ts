@@ -111,22 +111,55 @@ export async function initializeDatabase(): Promise<void> {
     // Run migrations (add columns to existing tables)
     try {
       console.log('Running migrations...');
+      
+      console.log('Migration: Adding volume columns to markets...');
       await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS volume DECIMAL(20, 8) DEFAULT 0');
       await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS volume_24h DECIMAL(20, 8) DEFAULT 0');
       await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS liquidity DECIMAL(20, 8) DEFAULT 0');
       await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS last_trade_at TIMESTAMP');
       await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS activity_score DECIMAL(10, 5) DEFAULT 0');
       await query('ALTER TABLE markets ADD COLUMN IF NOT EXISTS question_id VARCHAR(255)');
-      await query('ALTER TABLE outcomes ALTER COLUMN outcome TYPE VARCHAR(255)');
+      
+      console.log('Migration: Checking outcomes.outcome column type...');
+      // Only alter column type if it's not already VARCHAR(255)
+      // This avoids the expensive ALTER COLUMN TYPE operation if not needed
+      const outcomeColumnCheck = await query(`
+        SELECT data_type, character_maximum_length 
+        FROM information_schema.columns 
+        WHERE table_name = 'outcomes' AND column_name = 'outcome'
+      `);
+      
+      if (outcomeColumnCheck.rows.length > 0) {
+        const colInfo = outcomeColumnCheck.rows[0];
+        const currentType = colInfo.data_type;
+        const maxLength = colInfo.character_maximum_length;
+        
+        if (currentType !== 'character varying' || maxLength !== 255) {
+          console.log(`Migration: Altering outcomes.outcome from ${currentType}(${maxLength}) to VARCHAR(255)...`);
+          console.log('Note: This may take time if there is existing data. Ensure no other connections are active.');
+          await query('ALTER TABLE outcomes ALTER COLUMN outcome TYPE VARCHAR(255)');
+        } else {
+          console.log('Migration: outcomes.outcome is already VARCHAR(255), skipping...');
+        }
+      }
+      
+      console.log('Migration: Adding volume columns to outcomes...');
       await query('ALTER TABLE outcomes ADD COLUMN IF NOT EXISTS volume DECIMAL(20, 8) DEFAULT 0');
       await query('ALTER TABLE outcomes ADD COLUMN IF NOT EXISTS volume_24h DECIMAL(20, 8) DEFAULT 0');
       
+      console.log('Migration: Creating indexes...');
       // Create index on question_id if it doesn't exist
       await query('CREATE INDEX IF NOT EXISTS idx_markets_question_id ON markets(question_id)');
       
       console.log('Migrations completed successfully.');
     } catch (migrationError) {
       console.error('Error running migrations:', migrationError);
+      if (migrationError instanceof Error) {
+        console.error('Migration error details:', {
+          message: migrationError.message,
+          stack: migrationError.stack,
+        });
+      }
     }
 
     // Verify tables were created

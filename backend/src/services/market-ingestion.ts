@@ -684,13 +684,16 @@ export class MarketIngestionService {
       }
       
       // Detect whale trades - use USDC value
+      // Normalize side: PolymarketTradeEvent.side is already 'buy' | 'sell' | undefined
+      const normalizedSide = side === 'buy' ? 'buy' : (side === 'sell' ? 'sell' : undefined);
+      
       const whaleAlert = this.anomalyDetector.detectWhaleTrade(
         marketId,
         outcome.id,
         assetId,
         finalSizeInUSDC, // Use USDC value for whale detection
         price, // Trade execution price
-        side === 'BUY' || side === 'buy' ? 'buy' : (side === 'SELL' || side === 'sell' ? 'sell' : undefined), // Trade side
+        normalizedSide, // Trade side
         size // Size in shares (not USDC)
       );
 

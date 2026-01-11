@@ -688,7 +688,10 @@ export class MarketIngestionService {
         marketId,
         outcome.id,
         assetId,
-        finalSizeInUSDC // Use USDC value for whale detection
+        finalSizeInUSDC, // Use USDC value for whale detection
+        price, // Trade execution price
+        side === 'BUY' || side === 'buy' ? 'buy' : (side === 'SELL' || side === 'sell' ? 'sell' : undefined), // Trade side
+        size // Size in shares (not USDC)
       );
 
       if (whaleAlert) {

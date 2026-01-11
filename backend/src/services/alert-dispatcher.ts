@@ -639,11 +639,33 @@ export class AlertDispatcher {
 
       case 'whale_trade':
         const tradeSize = alert.data.tradeSize || 0;
+        const tradePrice = alert.data.price;
+        const tradeSide = alert.data.side;
+        const sizeInShares = alert.data.sizeInShares;
         const outcomeInfo = marketInfo.outcomeName ? ` | Outcome: ${marketInfo.outcomeName}` : '';
+        
+        // Build detailed message with price, side, and size
+        let tradeDetails = `$${tradeSize.toLocaleString()} USDC`;
+        if (sizeInShares !== undefined) {
+          tradeDetails += ` (${sizeInShares.toLocaleString()} shares`;
+          if (tradePrice !== undefined) {
+            tradeDetails += ` @ $${tradePrice.toFixed(4)}`;
+          }
+          tradeDetails += ')';
+        } else if (tradePrice !== undefined) {
+          tradeDetails += ` @ $${tradePrice.toFixed(4)}`;
+        }
+        if (tradeSide) {
+          tradeDetails += ` [${tradeSide.toUpperCase()}]`;
+        }
+        
         baseFormatted.title = '🐋 WHALE TRADE Detected';
-        baseFormatted.message = `Large trade detected: $${tradeSize.toLocaleString()} USDC${outcomeInfo}`;
+        baseFormatted.message = `Large trade detected: ${tradeDetails}${outcomeInfo}`;
         baseFormatted.metrics = {
           tradeSize,
+          price: tradePrice,
+          side: tradeSide,
+          sizeInShares: sizeInShares,
         };
         break;
 

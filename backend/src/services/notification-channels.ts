@@ -167,6 +167,30 @@ export class WebhookChannel implements NotificationChannel {
       });
     }
 
+    if (alert.metrics.sizeInShares !== undefined) {
+      fields.push({
+        name: 'Shares',
+        value: `${alert.metrics.sizeInShares.toLocaleString()}`,
+        inline: true,
+      });
+    }
+
+    if (alert.metrics.price !== undefined) {
+      fields.push({
+        name: 'Price',
+        value: `$${alert.metrics.price.toFixed(4)}`,
+        inline: true,
+      });
+    }
+
+    if (alert.metrics.side !== undefined) {
+      fields.push({
+        name: 'Side',
+        value: alert.metrics.side.toUpperCase(),
+        inline: true,
+      });
+    }
+
     if (alert.metrics.spread !== undefined) {
       fields.push({
         name: 'Spread',

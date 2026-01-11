@@ -500,7 +500,10 @@ export class AnomalyDetector {
     marketId: string,
     outcomeId: string,
     tokenId: string,
-    tradeSize: number
+    tradeSize: number,
+    price?: number,
+    side?: 'buy' | 'sell',
+    sizeInShares?: number
   ): AlertEvent | null {
     if (tradeSize >= this.WHALE_TRADE_THRESHOLD) {
       return {
@@ -513,6 +516,9 @@ export class AnomalyDetector {
         data: {
           tradeSize,
           threshold: this.WHALE_TRADE_THRESHOLD,
+          price: price || undefined,
+          side: side || undefined,
+          sizeInShares: sizeInShares || undefined,
         },
         timestamp: Date.now(),
       };

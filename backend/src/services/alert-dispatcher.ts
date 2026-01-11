@@ -36,6 +36,9 @@ export interface FormattedAlert {
     depth?: number;
     absoluteChange?: number;
     percentageChange?: number;
+    price?: number;
+    side?: string;
+    sizeInShares?: number;
   };
   timestamp: string;
   polymarketUrl?: string;

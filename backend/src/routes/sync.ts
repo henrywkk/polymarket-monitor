@@ -117,20 +117,6 @@ router.get('/maintenance/stats', async (_req: Request, res: Response) => {
         pg_size_pretty(pg_indexes_size('price_history')) as indexes_size
     `);
 
-    // Check if periodic sync has run pruning (this is informational)
-    const periodicSyncInfo = await query(`
-      SELECT 
-        COUNT(*) as total_syncs_needed_for_prune,
-        CASE 
-          WHEN COUNT(*) % 72 = 0 THEN 'Pruning should run on next sync'
-          ELSE CONCAT('Pruning will run after ', 72 - (COUNT(*) % 72), ' more syncs')
-        END as next_prune_status
-      FROM (
-        SELECT 1 FROM generate_series(1, (SELECT COUNT(*) FROM price_history)::int) 
-        LIMIT 1
-      ) t
-    `).catch(() => ({ rows: [{ total_syncs_needed_for_prune: 'unknown', next_prune_status: 'unknown' }] }));
-
     const stats = {
       total_records: parseInt(totalCount.rows[0].count),
       time_range: {

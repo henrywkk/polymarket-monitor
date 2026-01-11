@@ -39,21 +39,29 @@ router.get('/whales', async (req: Request, res: Response) => {
       );
       
       // Filter for whale trades
+      // Use sizeInUSDC (calculated USDC value) for filtering, fallback to size for backward compatibility
       const whaleTrades = trades
-        .filter(t => (t.size || 0) >= minSizeNum)
+        .filter(t => {
+          const tradeSize = t.sizeInUSDC !== undefined ? t.sizeInUSDC : (t.size || 0);
+          return tradeSize >= minSizeNum;
+        })
         .map(t => ({
           ...t,
           tokenId: outcome.token_id,
           outcomeId: outcome.id,
           outcomeName: outcome.outcome,
+          // Ensure we use sizeInUSDC for display, fallback to size
+          tradeSize: t.sizeInUSDC !== undefined ? t.sizeInUSDC : (t.size || 0),
         }));
       
       allWhaleTrades.push(...whaleTrades);
     }
     
-    // Sort by size descending, then by timestamp descending
+    // Sort by trade size (USDC) descending, then by timestamp descending
     allWhaleTrades.sort((a, b) => {
-      const sizeDiff = (b.size || 0) - (a.size || 0);
+      const aSize = a.tradeSize !== undefined ? a.tradeSize : (a.sizeInUSDC !== undefined ? a.sizeInUSDC : (a.size || 0));
+      const bSize = b.tradeSize !== undefined ? b.tradeSize : (b.sizeInUSDC !== undefined ? b.sizeInUSDC : (b.size || 0));
+      const sizeDiff = bSize - aSize;
       if (sizeDiff !== 0) return sizeDiff;
       return b.timestamp - a.timestamp;
     });
@@ -64,8 +72,13 @@ router.get('/whales', async (req: Request, res: Response) => {
       minSize: minSizeNum,
       stats: {
         totalWhaleTrades: allWhaleTrades.length,
-        largestTrade: allWhaleTrades.length > 0 ? Math.max(...allWhaleTrades.map(t => t.size || 0)) : 0,
-        totalVolume: allWhaleTrades.reduce((sum, t) => sum + (t.size || 0), 0),
+        largestTrade: allWhaleTrades.length > 0 ? Math.max(...allWhaleTrades.map(t => {
+          return t.tradeSize !== undefined ? t.tradeSize : (t.sizeInUSDC !== undefined ? t.sizeInUSDC : (t.size || 0));
+        })) : 0,
+        totalVolume: allWhaleTrades.reduce((sum, t) => {
+          const tradeSize = t.tradeSize !== undefined ? t.tradeSize : (t.sizeInUSDC !== undefined ? t.sizeInUSDC : (t.size || 0));
+          return sum + tradeSize;
+        }, 0),
       },
     });
   } catch (error) {
@@ -203,9 +216,17 @@ router.get('/:marketId/stats', async (req: Request, res: Response) => {
       );
       
       if (trades.length > 0) {
-        const totalVolume = trades.reduce((sum, t) => sum + (t.size || 0), 0);
+        // Use sizeInUSDC for volume calculation, fallback to size
+        const totalVolume = trades.reduce((sum, t) => {
+          const tradeSize = t.sizeInUSDC !== undefined ? t.sizeInUSDC : (t.size || 0);
+          return sum + tradeSize;
+        }, 0);
         const avgPrice = trades.reduce((sum, t) => sum + (t.price || 0), 0) / trades.length;
-        const whaleTrades = trades.filter(t => (t.size || 0) >= 10000);
+        // Filter whale trades using sizeInUSDC (calculated USDC value)
+        const whaleTrades = trades.filter(t => {
+          const tradeSize = t.sizeInUSDC !== undefined ? t.sizeInUSDC : (t.size || 0);
+          return tradeSize >= 10000;
+        });
         
         const outcomeStats = {
           outcomeId: outcome.id,
@@ -215,7 +236,9 @@ router.get('/:marketId/stats', async (req: Request, res: Response) => {
           totalVolume,
           avgPrice,
           whaleTradeCount: whaleTrades.length,
-          largestTrade: trades.length > 0 ? Math.max(...trades.map(t => t.size || 0)) : 0,
+          largestTrade: trades.length > 0 ? Math.max(...trades.map(t => {
+            return t.sizeInUSDC !== undefined ? t.sizeInUSDC : (t.size || 0);
+          })) : 0,
         };
         
         statsByOutcome[outcome.outcome] = outcomeStats;

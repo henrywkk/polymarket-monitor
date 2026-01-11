@@ -94,13 +94,18 @@ router.get('/maintenance/stats', async (_req: Request, res: Response) => {
     // Get total count
     const totalCount = await query('SELECT COUNT(*) as count FROM price_history');
     
-    // Get oldest and newest timestamps
+    // Get oldest and newest timestamps (checking both timestamp and created_at)
     const timeRange = await query(`
       SELECT 
-        MIN(timestamp) as oldest,
-        MAX(timestamp) as newest,
-        COUNT(*) FILTER (WHERE timestamp < NOW() - INTERVAL '24 hours') as older_than_24h,
-        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '24 hours') as within_24h
+        MIN(timestamp) as oldest_timestamp,
+        MAX(timestamp) as newest_timestamp,
+        MIN(created_at) as oldest_created_at,
+        MAX(created_at) as newest_created_at,
+        COUNT(*) FILTER (WHERE timestamp < NOW() - INTERVAL '24 hours') as older_than_24h_by_timestamp,
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '24 hours') as within_24h_by_timestamp,
+        COUNT(*) FILTER (WHERE created_at < NOW() - INTERVAL '24 hours') as older_than_24h_by_created_at,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours') as within_24h_by_created_at,
+        COUNT(*) FILTER (WHERE timestamp < NOW() - INTERVAL '30 hours') as older_than_30h_by_timestamp
       FROM price_history
     `);
     
@@ -112,21 +117,55 @@ router.get('/maintenance/stats', async (_req: Request, res: Response) => {
         pg_size_pretty(pg_indexes_size('price_history')) as indexes_size
     `);
 
+    // Check if periodic sync has run pruning (this is informational)
+    const periodicSyncInfo = await query(`
+      SELECT 
+        COUNT(*) as total_syncs_needed_for_prune,
+        CASE 
+          WHEN COUNT(*) % 72 = 0 THEN 'Pruning should run on next sync'
+          ELSE CONCAT('Pruning will run after ', 72 - (COUNT(*) % 72), ' more syncs')
+        END as next_prune_status
+      FROM (
+        SELECT 1 FROM generate_series(1, (SELECT COUNT(*) FROM price_history)::int) 
+        LIMIT 1
+      ) t
+    `).catch(() => ({ rows: [{ total_syncs_needed_for_prune: 'unknown', next_prune_status: 'unknown' }] }));
+
     const stats = {
       total_records: parseInt(totalCount.rows[0].count),
       time_range: {
-        oldest: timeRange.rows[0].oldest,
-        newest: timeRange.rows[0].newest,
+        timestamp: {
+          oldest: timeRange.rows[0].oldest_timestamp,
+          newest: timeRange.rows[0].newest_timestamp,
+        },
+        created_at: {
+          oldest: timeRange.rows[0].oldest_created_at,
+          newest: timeRange.rows[0].newest_created_at,
+        },
       },
       retention: {
-        older_than_24h: parseInt(timeRange.rows[0].older_than_24h),
-        within_24h: parseInt(timeRange.rows[0].within_24h),
+        // Pruning uses timestamp column
+        by_timestamp: {
+          older_than_24h: parseInt(timeRange.rows[0].older_than_24h_by_timestamp),
+          within_24h: parseInt(timeRange.rows[0].within_24h_by_timestamp),
+          older_than_30h: parseInt(timeRange.rows[0].older_than_30h_by_timestamp),
+        },
+        // For reference - created_at is not used for pruning
+        by_created_at: {
+          older_than_24h: parseInt(timeRange.rows[0].older_than_24h_by_created_at),
+          within_24h: parseInt(timeRange.rows[0].within_24h_by_created_at),
+        },
         retention_period_hours: 24,
+        note: 'Pruning uses the timestamp column, not created_at',
       },
       storage: {
         total_size: tableSize.rows[0].total_size,
         table_size: tableSize.rows[0].table_size,
         indexes_size: tableSize.rows[0].indexes_size,
+      },
+      pruning_info: {
+        automatic_pruning: 'Runs every 72 sync cycles (approximately every 6 hours at 5-min intervals)',
+        last_prune_check: 'Check backend logs for "[Periodic Sync] Running maintenance tasks..."',
       },
     };
 

@@ -15,6 +15,7 @@ export class PeriodicSyncService {
   private syncService: MarketSyncService;
   private syncInterval: number; // in milliseconds
   private intervalId: NodeJS.Timeout | null = null;
+  private lastPruneTime: Date | null = null; // Track when pruning last ran
   private stats: SyncStats = {
     lastSyncTime: null,
     totalSyncs: 0,
@@ -89,11 +90,18 @@ export class PeriodicSyncService {
         await this.syncService.ingestionService.takeStatsSnapshot();
       }
 
-      // Run maintenance tasks (like pruning) every 6 hours
-      // Assuming 5-minute interval, 72 syncs = 6 hours
-      if (this.stats.totalSyncs % 72 === 0) {
-        console.log('[Periodic Sync] Running maintenance tasks...');
-        await this.syncService.ingestionService.pruneOldHistory(1); // Keep 1 day (24 hours)
+      // Run maintenance tasks (like pruning) every 6 hours OR at least once per day
+      // This ensures pruning runs even if the server restarts and counter resets
+      const shouldPrune = 
+        this.stats.totalSyncs % 72 === 0 || // Every 72 syncs (approx 6 hours at 5-min intervals)
+        !this.lastPruneTime || // Never pruned before
+        (Date.now() - this.lastPruneTime.getTime()) > 24 * 60 * 60 * 1000; // More than 24 hours since last prune
+      
+      if (shouldPrune) {
+        console.log('[Periodic Sync] Running maintenance tasks (pruning old price history)...');
+        const prunedCount = await this.syncService.ingestionService.pruneOldHistory(1); // Keep 1 day (24 hours)
+        this.lastPruneTime = new Date();
+        console.log(`[Periodic Sync] Pruned ${prunedCount} old price history records`);
       }
 
       console.log(`[Periodic Sync] Completed: ${synced} markets synced in ${duration}ms`);

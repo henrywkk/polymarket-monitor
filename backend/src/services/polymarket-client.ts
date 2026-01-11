@@ -162,7 +162,29 @@ export class PolymarketWebSocketClient {
     const assetId = (msg.asset_id || msg.token_id || msg.id) as string;
 
     // Polymarket CLOB WebSocket events
-    // 1. Array of price_changes (most common for updates)
+    // 1. Check for actual trade execution messages (last_trade_price event type)
+    const eventType = (msg.event_type || msg.type) as string;
+    if (eventType === 'last_trade_price' || eventType === 'trade') {
+      // This is an actual trade execution, not an order book update
+      const tradeAssetId = (msg.asset_id || msg.token_id || msg.id) as string;
+      const tradePrice = parseFloat(String(msg.price || msg.last_price || 0));
+      const tradeSize = msg.size || msg.volume || msg.trade_size || msg.amount || msg.quantity;
+      const tradeSide = msg.side || undefined;
+      
+      if (tradeAssetId && tradePrice > 0 && tradeSize) {
+        this.emitTradeEvent(tradeAssetId, {
+          price: tradePrice,
+          size: parseFloat(String(tradeSize)),
+          timestamp: Date.now(),
+          side: tradeSide ? (tradeSide.toLowerCase() === 'buy' ? 'buy' : 'sell') : undefined,
+        });
+      }
+      // Continue processing - trade messages may also contain price updates
+    }
+    
+    // 2. Array of price_changes (order book updates - NOT trades)
+    // NOTE: price_changes are emitted when orders are placed/cancelled, NOT when trades execute
+    // We should NOT extract trade data from price_changes
     if (Array.isArray(msg.price_changes)) {
       for (const pc of msg.price_changes) {
         const pcAssetId = (pc.asset_id || pc.token_id) as string;
@@ -171,39 +193,12 @@ export class PolymarketWebSocketClient {
         if (pcAssetId && (bid > 0 || ask > 0)) {
           this.emitPriceEvent(pcAssetId, bid, ask, 'price_changed');
         }
-        
-        // Check for trade data in price_changes
-        const tradeSize = pc.size || pc.volume || pc.trade_size || pc.amount || pc.quantity;
-        if (tradeSize && pcAssetId) {
-          const tradePrice = bid || ask || parseFloat(String(pc.price || pc.last_price || 0));
-          if (tradePrice > 0) {
-            this.emitTradeEvent(pcAssetId, {
-              price: tradePrice,
-              size: parseFloat(String(tradeSize)),
-              timestamp: Date.now(),
-              side: pc.side || (bid > 0 ? 'buy' : 'sell'),
-            });
-          }
-        }
+        // DO NOT extract trade data from price_changes - these are order book updates only
       }
       return;
     }
-    
-    // Check for trade data in other message formats
-    const tradeSize = msg.size || msg.volume || msg.trade_size || msg.amount || msg.quantity;
-    if (tradeSize && assetId) {
-      const tradePrice = parseFloat(String(msg.price || msg.last_price || msg.best_bid || msg.best_ask || 0));
-      if (tradePrice > 0) {
-        this.emitTradeEvent(assetId, {
-          price: tradePrice,
-          size: parseFloat(String(tradeSize)),
-          timestamp: Date.now(),
-          side: msg.side || undefined,
-        });
-      }
-    }
 
-    // 2. Orderbook updates (full book with bids and asks)
+    // 3. Orderbook updates (full book with bids and asks)
     if (Array.isArray(msg.bids) && Array.isArray(msg.asks)) {
       if (assetId) {
         // Parse full orderbook
@@ -233,8 +228,8 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    // 3. Direct market messages with best bid/ask
-    const eventType = (msg.event_type || msg.type) as string;
+    // 4. Direct market messages with best bid/ask
+    // Note: eventType was already extracted above for trade detection
 
     if (!assetId) return;
 

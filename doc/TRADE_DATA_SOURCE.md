@@ -151,33 +151,29 @@ Once extracted, trade events are processed in:
 
 ## Channel/Subscription Details
 
-**Important:** There is **no separate "trades" channel**. Trade data comes embedded in:
-- `price_changes` messages (most common)
-- Direct market update messages
+**Important:** Trade executions come from messages with `event_type: "last_trade_price"`.
 
 **Subscription:** Subscribe to asset IDs (token IDs), and you'll receive:
-- Price updates (`best_bid`, `best_ask`)
-- Trade data (embedded in `price_changes` or direct messages)
+- Price updates (`price_changes` messages - order book updates)
+- **Trade executions** (`last_trade_price` messages - actual trades)
 - Orderbook updates (if available)
+
+**Key Distinction:**
+- `price_change` → Order book updates (orders placed/cancelled) - **NOT trades**
+- `last_trade_price` → Actual trade executions - **USE THIS for whale detection**
 
 ## Example Real WebSocket Messages
 
-### Example 1: Price Change with Trade Data
+### Example 1: Actual Trade Execution (last_trade_price)
 
 ```json
 {
-  "market": "0xa0eafdfa7da17483796f77f4b287d28834ab97db4a9a6e999b52c1ba239bc2f3",
-  "price_changes": [
-    {
-      "asset_id": "91737931954079461205792748723730956466398437395923414328893692961489566016241",
-      "price": "0.184",
-      "size": "172.3",
-      "side": "BUY",
-      "hash": "38b297cfb08e7765beb52efef87565c4cee2edd1",
-      "best_bid": "0.184",
-      "best_ask": "0.186"
-    }
-  ]
+  "event_type": "last_trade_price",
+  "asset_id": "91737931954079461205792748723730956466398437395923414328893692961489566016241",
+  "price": "0.184",
+  "size": "172.3",
+  "side": "BUY",
+  "timestamp": "1705068000000"
 }
 ```
 
@@ -187,6 +183,29 @@ Once extracted, trade events are processed in:
 - `price`: `0.184` (USDC per share)
 - `side`: `"BUY"`
 - `sizeInUSDC`: `172.3 × 0.184 = $31.70`
+
+**✅ This is a real trade execution - use for whale detection**
+
+### Example 2: Order Book Update (price_change) - NOT a Trade
+
+```json
+{
+  "event_type": "price_change",
+  "market": "0xa0eafdfa7da17483796f77f4b287d28834ab97db4a9a6e999b52c1ba239bc2f3",
+  "price_changes": [
+    {
+      "asset_id": "91737931954079461205792748723730956466398437395923414328893692961489566016241",
+      "best_bid": "0.184",
+      "best_ask": "0.186",
+      "size": "172.3"
+    }
+  ]
+}
+```
+
+**⚠️ This is NOT a trade execution** - it's an order book update (order placed/cancelled)
+- The `size` field here represents order size, not executed trade size
+- **DO NOT use this for whale trade detection**
 
 ### Example 2: Orderbook Update (No Trade Data)
 

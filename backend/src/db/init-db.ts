@@ -150,6 +150,9 @@ export async function initializeDatabase(): Promise<void> {
       console.log('Migration: Creating indexes...');
       // Create index on question_id if it doesn't exist
       await query('CREATE INDEX IF NOT EXISTS idx_markets_question_id ON markets(question_id)');
+      // Create critical index on outcomes.token_id - used in every price event lookup
+      // This prevents full table scans that cause connection pool exhaustion
+      await query('CREATE INDEX IF NOT EXISTS idx_outcomes_token_id ON outcomes(token_id)');
       
       console.log('Migrations completed successfully.');
     } catch (migrationError) {

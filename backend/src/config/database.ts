@@ -5,7 +5,7 @@ dotenv.config();
 
 const poolConfig: PoolConfig = {
   connectionString: process.env.DATABASE_URL,
-  max: 20,
+  max: 50, // Increased from 20 to handle high-volume WebSocket price events
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000, // Increased to 10 seconds for Railway/cloud deployments
 };
